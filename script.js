@@ -1,11 +1,11 @@
-/* Demo CRM v1.0.1
+/* Demo CRM v1.1.0
    Static SPA for GitHub Pages + Supabase.
    Security rule: never place service_role key, database password, or private token in this file.
 */
 (() => {
   'use strict';
 
-  const APP_VERSION = '1.0.1';
+  const APP_VERSION = '1.1.0';
   const APP_CONFIG = {
     SUPABASE_URL: 'https://hacmassihdqlgkmwoivs.supabase.co',
     SUPABASE_ANON_KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhhY21hc3NpaGRxbGdrbXdvaXZzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkxMjk1ODgsImV4cCI6MjA5NDcwNTU4OH0.TgkJCHaRndMDZY2SANXCjFLdMkHUd_bxJOb0K9Znpa8',
@@ -25,16 +25,8 @@
   });
 
   const FINAL_STATUSES = new Set([STATUS.CLOSED, STATUS.CUSTOMER]);
-  const LOG_TYPES = [
-    'หมายเหตุทั่วไป',
-    'โทรติดต่อลูกค้า',
-    'ส่งอีเมล',
-    'ลูกค้าตอบกลับ',
-    'ต่ออายุ demo',
-    'เปลี่ยนสถานะ',
-    'ปัญหาการใช้งาน',
-    'เป็นลูกค้าแล้ว'
-  ];
+  const DEFAULT_LOG_TYPE = 'หมายเหตุทั่วไป';
+  const DEMO_DRAFT_PREFIX = 'demo-crm:v1.1.0:demo-draft:';
 
   const State = {
     sb: null,
@@ -49,7 +41,9 @@
     dataLoaded: false,
     loadSeq: 0,
     lastForegroundRefreshAt: 0,
+    sidebarCollapsed: localStorage.getItem('demo-crm:sidebar-collapsed') === 'true',
     profiles: [],
+    responsiblePeople: [],
     companies: [],
     rounds: [],
     accounts: [],
@@ -293,6 +287,9 @@
         case 'activity-add':
           await addActivityLog(form);
           break;
+        case 'admin-responsible-save':
+          await saveResponsiblePerson(form);
+          break;
         case 'admin-module-save':
           await saveModule(form);
           break;
@@ -306,7 +303,7 @@
           await saveProfileAdmin(form);
           break;
         default:
-          toast('ไม่รู้จัก action นี้', 'error');
+          toast('ไม่รู้จักการทำงานนี้', 'error');
       }
     });
   }
@@ -330,14 +327,21 @@
         initSession();
         render();
         break;
+      case 'sidebar-toggle':
+        State.sidebarCollapsed = !State.sidebarCollapsed;
+        localStorage.setItem('demo-crm:sidebar-collapsed', String(State.sidebarCollapsed));
+        render();
+        break;
       case 'modal-close':
         closeModal();
         break;
       case 'account-add':
         addAccountRow();
+        saveDemoDraftFromElement(target);
         break;
       case 'account-remove':
         target.closest('[data-account-row]')?.remove();
+        saveDemoDraftFromElement(target);
         break;
       case 'password-toggle':
         togglePassword(target);
@@ -370,6 +374,9 @@
         State.adminTab = target.dataset.tab || 'users';
         render();
         break;
+      case 'admin-responsible-toggle':
+        await toggleResponsiblePerson(target.dataset.id, target.dataset.active === 'true');
+        break;
       case 'admin-module-toggle':
         await toggleModule(target.dataset.id, target.dataset.active === 'true');
         break;
@@ -379,11 +386,17 @@
       case 'run-reminder-check':
         await queueReminderEmails();
         break;
+      case 'draft-clear':
+        clearDemoDraft(target.dataset.draftKey || '');
+        render();
+        toast('ล้างข้อมูลร่างแล้ว', 'success');
+        break;
       case 'print':
         window.print();
         break;
       case 'chip-remove':
         removeChip(target);
+        saveDemoDraftFromElement(target);
         break;
       default:
         break;
@@ -417,6 +430,8 @@
         if (endDate) endDate.value = todayISO();
       }
     }
+
+    saveDemoDraftFromElement(target);
   }
 
   function handleInput(event) {
@@ -424,7 +439,10 @@
     if (target.matches('[data-filter="search"]')) {
       State.filters.search = target.value;
       render();
+      return;
     }
+
+    saveDemoDraftFromElement(target);
   }
 
   function handleKeyDown(event) {
@@ -434,12 +452,14 @@
     if (event.key === 'Enter' || event.key === ',') {
       event.preventDefault();
       addChipFromInput(input);
+      saveDemoDraftFromElement(input);
     }
 
     if (event.key === 'Backspace' && !input.value.trim()) {
       const wrapper = input.closest('[data-chip-name]');
       const chips = $$('.chip', wrapper);
       chips[chips.length - 1]?.querySelector('[data-action="chip-remove"]')?.click();
+      saveDemoDraftFromElement(input);
     }
   }
 
@@ -505,7 +525,7 @@
       const fallback = {
         id: user.id,
         email: user.email || '',
-        full_name: user.email || 'User',
+        full_name: user.email || 'ผู้ใช้',
         role: 'user',
         is_active: true
       };
@@ -522,7 +542,7 @@
 
     if (!State.profile.is_active) {
       await State.sb.auth.signOut();
-      throw new Error('บัญชีนี้ถูกปิดใช้งาน กรุณาติดต่อ admin');
+      throw new Error('บัญชีนี้ถูกปิดใช้งาน กรุณาติดต่อผู้ดูแลระบบ');
     }
   }
 
@@ -539,7 +559,7 @@
       await withTimeout(
         State.sb.rpc('sync_demo_statuses'),
         6000,
-        'sync status นานเกินไป'
+        'อัปเดตสถานะนานเกินไป'
       ).catch((error) => {
         console.warn('sync_demo_statuses skipped:', safeError(error));
       });
@@ -549,10 +569,11 @@
       const responses = await withTimeout(
         Promise.all([
           State.sb.from('profiles').select('*').order('full_name'),
+          State.sb.from('responsible_people').select('*').order('name'),
           State.sb.from('companies').select('*').is('deleted_at', null).order('updated_at', { ascending: false }),
           State.sb.from('demo_rounds').select('*').is('deleted_at', null).order('updated_at', { ascending: false }),
           State.sb.from('demo_accounts').select('*').order('created_at', { ascending: true }),
-          State.sb.from('modules').select('*').order('name'),
+          State.sb.from('modules').select('*').order('sort_order', { ascending: true }).order('name'),
           State.sb.from('demo_round_modules').select('*'),
           State.sb.from('activity_logs').select('*').is('deleted_at', null).order('created_at', { ascending: false }),
           State.sb.from('email_logs').select('*').order('created_at', { ascending: false }).limit(250),
@@ -567,6 +588,7 @@
 
       const [
         profiles,
+        responsiblePeople,
         companies,
         rounds,
         accounts,
@@ -582,6 +604,7 @@
       if (firstError) throw firstError;
 
       State.profiles = profiles.data || [];
+      State.responsiblePeople = responsiblePeople.data || [];
       State.companies = companies.data || [];
       State.rounds = rounds.data || [];
       State.accounts = accounts.data || [];
@@ -657,13 +680,12 @@
             <div class="brand-mark">D</div>
             <div>
               <h1>Demo CRM</h1>
-              <p>ระบบจัดการ Demo สำหรับทีม Customer Support</p>
+              <p>ระบบจัดการเดโมสำหรับทีม CS</p>
             </div>
           </div>
           ${needsConfig() ? `
             <div class="config-warning">
-              ยังไม่ได้ตั้งค่า Supabase ใน <strong>script.js</strong><br>
-              แก้ค่า SUPABASE_URL และ SUPABASE_ANON_KEY ก่อนใช้งานจริง
+              ยังไม่ได้ตั้งค่า Supabase ใน <strong>script.js</strong>
             </div>
           ` : ''}
           ${State.bootError ? `
@@ -676,16 +698,15 @@
           ` : ''}
           <form data-action="login" class="grid">
             <div class="field">
-              <label for="login-email">Email</label>
+              <label for="login-email">อีเมล <span class="required">*</span></label>
               <input id="login-email" class="input" type="email" name="email" autocomplete="email" required>
             </div>
             <div class="field">
-              <label for="login-password">Password</label>
+              <label for="login-password">รหัสผ่าน <span class="required">*</span></label>
               <input id="login-password" class="input" type="password" name="password" autocomplete="current-password" required>
             </div>
             <button class="btn primary" type="submit">เข้าสู่ระบบ</button>
           </form>
-          <p class="muted small-text">ไม่มีปุ่มสมัครสมาชิก ผู้ใช้ต้องถูกสร้างโดย admin/Supabase Auth ก่อน</p>
         </section>
       </main>
     `;
@@ -694,28 +715,32 @@
   function renderShell(route) {
     const profileName = displayName(State.profile);
     const isAdmin = userIsAdmin();
+    const collapsedClass = State.sidebarCollapsed ? ' sidebar-collapsed' : '';
 
     return `
-      <div class="shell">
+      <div class="shell${collapsedClass}">
         <aside class="sidebar">
-          <div class="brand">
+          <div class="brand sidebar-brand">
             <div class="brand-mark">D</div>
-            <div>
+            <div class="brand-text">
               <h2>Demo CRM</h2>
               <p>v${APP_VERSION}</p>
             </div>
+            <button class="sidebar-toggle" type="button" data-action="sidebar-toggle" title="ย่อ/ขยายเมนู">
+              ${State.sidebarCollapsed ? '»' : '«'}
+            </button>
           </div>
           <nav class="nav">
-            ${navLink('#dashboard', 'Dashboard', route)}
-            ${navLink('#demos', 'Demo List', route)}
-            ${navLink('#demos/new', 'Create Demo', route)}
-            ${isAdmin ? navLink('#admin', 'Admin', route) : ''}
+            ${navLink('#dashboard', 'แดชบอร์ด', route)}
+            ${navLink('#demos', 'รายการเดโม', route)}
+            ${navLink('#demos/new', 'สร้างเดโม', route)}
+            ${isAdmin ? navLink('#admin', 'ตั้งค่าระบบ', route) : ''}
           </nav>
           <div class="sidebar-footer">
-            <div>
+            <div class="sidebar-user">
               <strong>${escapeHTML(profileName)}</strong><br>
-              ${escapeHTML(State.profile?.email || '')}<br>
-              Role: ${escapeHTML(State.profile?.role || '')}
+              <span>${escapeHTML(State.profile?.email || '')}</span><br>
+              <span>สิทธิ์: ${escapeHTML(roleLabel(State.profile?.role || ''))}</span>
             </div>
             <button class="btn ghost" data-action="logout">ออกจากระบบ</button>
           </div>
@@ -730,7 +755,7 @@
 
   function navLink(hash, label, route) {
     const active = route === hash || (hash === '#demos' && route.startsWith('#demos/') && route !== '#demos/new');
-    return `<a href="${hash}" class="${active ? 'active' : ''}">${escapeHTML(label)}</a>`;
+    return `<a href="${hash}" class="${active ? 'active' : ''}" title="${escapeAttr(label)}"><span class="nav-full">${escapeHTML(label)}</span><span class="nav-short">${escapeHTML(label.slice(0, 1))}</span></a>`;
   }
 
   function renderLoadNotice() {
@@ -789,12 +814,12 @@
     return renderNotFound();
   }
 
-  function renderTopbar(title, subtitle, actions = '') {
+  function renderTopbar(title, subtitle = '', actions = '') {
     return `
       <div class="topbar">
         <div class="page-title">
           <h1>${escapeHTML(title)}</h1>
-          <p>${escapeHTML(subtitle || '')}</p>
+          ${subtitle ? `<p>${escapeHTML(subtitle)}</p>` : ''}
         </div>
         <div class="actions">
           ${actions}
@@ -829,11 +854,11 @@
       .slice(0, 8);
 
     return `
-      ${renderTopbar('Dashboard', 'ภาพรวม Demo ทั้งทีม', `
-        <a class="btn primary" href="#demos/new">+ สร้าง Demo</a>
+      ${renderTopbar('แดชบอร์ด', '', `
+        <a class="btn primary" href="#demos/new">+ สร้างเดโม</a>
       `)}
       <section class="card">
-        <div class="filters">
+        <div class="filters compact">
           <div class="field">
             <label>เริ่ม</label>
             <input class="input" type="date" data-dashboard-range="start" value="${escapeAttr(start)}">
@@ -842,34 +867,34 @@
             <label>สิ้นสุด</label>
             <input class="input" type="date" data-dashboard-range="end" value="${escapeAttr(end)}">
           </div>
-          ${userIsAdmin() ? '<button class="btn warning" data-action="run-reminder-check">Queue reminder 3 วัน</button>' : ''}
+          ${userIsAdmin() ? '<button class="btn warning" data-action="run-reminder-check">สร้างคิวเตือน 3 วัน</button>' : ''}
         </div>
         <div class="stats-grid">
-          ${statCard('Demo ในช่วงที่เลือก', rows.length, 'นับจากวันที่สร้าง')}
+          ${statCard('เดโมในช่วงที่เลือก', rows.length)}
           ${statCard(STATUS.PENDING, counts[STATUS.PENDING] || 0)}
           ${statCard(STATUS.ACTIVE, counts[STATUS.ACTIVE] || 0)}
-          ${statCard('ใกล้หมดอายุ 7 วัน', near7.length, 'Dashboard เท่านั้น')}
+          ${statCard('ใกล้หมดอายุ 7 วัน', near7.length)}
           ${statCard(STATUS.EXPIRED, counts[STATUS.EXPIRED] || 0)}
           ${statCard(STATUS.CLOSED, counts[STATUS.CLOSED] || 0)}
           ${statCard(STATUS.CUSTOMER, counts[STATUS.CUSTOMER] || 0)}
         </div>
       </section>
 
-      <section class="grid two" style="margin-top:16px">
+      <section class="grid two content-gap">
         <div class="card">
-          <div class="section-title"><h2>Demo แยกตามสถานะ</h2></div>
+          <div class="section-title"><h2>จำนวนตามสถานะ</h2></div>
           ${barChart(counts)}
         </div>
         <div class="card">
-          <div class="section-title"><h2>Demo แยกตามโมดูล</h2></div>
+          <div class="section-title"><h2>จำนวนตามโมดูล</h2></div>
           ${barChart(countByModule(rows))}
         </div>
       </section>
 
-      <section class="grid two" style="margin-top:16px">
+      <section class="grid two content-gap">
         ${miniTable('ใกล้หมดอายุภายใน 7 วัน', near7.slice(0, 10), true)}
         ${miniTable('หมดอายุแต่ยังไม่ปิดรายการ', expired.slice(0, 10), true)}
-        ${miniTable('รายการล่าสุดที่สร้าง', latest, false)}
+        ${miniTable('รายการล่าสุด', latest, false)}
         ${miniTable('เป็นลูกค้าแล้วล่าสุด', customers, false)}
       </section>
     `;
@@ -880,7 +905,7 @@
       <div class="card stat">
         <div class="label">${escapeHTML(label)}</div>
         <div class="value">${Number(value || 0).toLocaleString('th-TH')}</div>
-        <div class="hint">${escapeHTML(hint)}</div>
+        ${hint ? `<div class="hint">${escapeHTML(hint)}</div>` : ''}
       </div>
     `;
   }
@@ -921,40 +946,40 @@
     const rows = getFilteredRows();
 
     return `
-      ${renderTopbar('Demo List', 'ค้นหา กรอง จัดเรียง และ export รายการ demo', `
-        <a class="btn primary" href="#demos/new">+ สร้าง Demo</a>
-        <button class="btn secondary" data-action="export-current">Export ผลลัพธ์</button>
-        <button class="btn ghost" data-action="export-all">Export ทั้งหมด</button>
+      ${renderTopbar('รายการเดโม', '', `
+        <a class="btn primary" href="#demos/new">+ สร้างเดโม</a>
+        <button class="btn secondary" data-action="export-current">ส่งออกผลลัพธ์</button>
+        <button class="btn ghost" data-action="export-all">ส่งออกทั้งหมด</button>
       `)}
       <section class="card">
         <div class="filters">
-          <div class="field" style="min-width:260px; flex:1">
+          <div class="field search-field">
             <label>ค้นหา</label>
-            <input class="input" data-filter="search" value="${escapeAttr(State.filters.search)}" placeholder="บริษัท, ผู้ติดต่อ, อีเมล, โมดูล, ผู้รับผิดชอบ">
+            <input class="input" data-filter="search" value="${escapeAttr(State.filters.search)}" placeholder="บริษัท ผู้ติดต่อ อีเมล โมดูล ผู้รับผิดชอบ">
           </div>
           <div class="field">
             <label>สถานะ</label>
             <select class="select" data-filter="status">
               ${option('', 'ทุกสถานะ', State.filters.status)}
-              ${Object.values(STATUS).map((s) => option(s, s, State.filters.status)).join('')}
+              ${Object.values(STATUS).map((status) => option(status, status, State.filters.status)).join('')}
             </select>
           </div>
           <div class="field">
             <label>ผู้รับผิดชอบ</label>
             <select class="select" data-filter="responsible">
               ${option('', 'ทุกคน', State.filters.responsible)}
-              ${State.profiles.map((p) => option(p.id, displayName(p), State.filters.responsible)).join('')}
+              ${State.responsiblePeople.map((person) => option(person.id, person.name, State.filters.responsible)).join('')}
             </select>
           </div>
           <div class="field">
             <label>โมดูล</label>
             <select class="select" data-filter="module">
               ${option('', 'ทุกโมดูล', State.filters.module)}
-              ${State.modules.map((m) => option(m.id, m.name, State.filters.module)).join('')}
+              ${State.modules.map((module) => option(module.id, module.name, State.filters.module)).join('')}
             </select>
           </div>
           <div class="field">
-            <label>Sort</label>
+            <label>จัดเรียง</label>
             <select class="select" data-filter="sort">
               ${option('updated_desc', 'แก้ไขล่าสุด', State.filters.sort)}
               ${option('created_desc', 'สร้างล่าสุด', State.filters.sort)}
@@ -976,7 +1001,7 @@
   }
 
   function renderDemoTable(rows) {
-    if (!rows.length) return '<div class="empty">ไม่พบรายการ Demo</div>';
+    if (!rows.length) return '<div class="empty">ไม่พบรายการเดโม</div>';
 
     return `
       <div class="table-wrap">
@@ -993,9 +1018,9 @@
               <th>วันทั้งหมด</th>
               <th>วันคงเหลือ</th>
               <th>โมดูล</th>
-              <th>โน๊ตล่าสุด</th>
+              <th>บันทึกล่าสุด</th>
               <th>แก้ไขล่าสุด</th>
-              <th>Actions</th>
+              <th>จัดการ</th>
             </tr>
           </thead>
           <tbody>
@@ -1012,7 +1037,7 @@
                   <td>${formatDate(row.round.end_date)}</td>
                   <td>${row.totalDays}</td>
                   <td>${formatRemaining(row.remainingDays)}</td>
-                  <td>${escapeHTML(row.modules.map((m) => m.name).join(', ') || '-')}</td>
+                  <td>${escapeHTML(row.modules.map((module) => module.name).join(', ') || '-')}</td>
                   <td>${escapeHTML(row.latestLog?.message || '-')}</td>
                   <td>${formatDateTime(row.round.updated_at)}</td>
                   <td>
@@ -1043,78 +1068,109 @@
     const source = editRow || renewRow;
     const company = source?.company || {};
     const round = source?.round || {};
-    const title = editRow ? 'แก้ไข Demo' : renewRow ? 'ต่ออายุ Demo' : 'สร้าง Demo';
-    const subtitle = editRow
-      ? `แก้ไขข้อมูลของ ${company.company_name}`
-      : renewRow
-        ? `copy ข้อมูลจากรอบเดิมของ ${company.company_name}`
-        : 'เพิ่มบริษัทและ demo round ใหม่';
-
-    const selectedModuleIds = source?.modules.map((m) => m.id) || [];
-    const accounts = source?.accounts.length ? source.accounts : [{ login_email: '', password: '', note: '' }];
+    const title = editRow ? 'แก้ไขเดโม' : renewRow ? 'ต่ออายุเดโม' : 'สร้างเดโม';
 
     const startDate = editRow ? round.start_date : todayISO();
     const endDate = editRow ? round.end_date : addDaysISO(todayISO(), 14);
     const renewalNo = editRow ? (round.renewal_no || 0) : renewRow ? (round.renewal_no || 0) + 1 : 0;
+    const draftKey = demoDraftKey(editId, renewFromId);
+    const draft = readDemoDraft(draftKey);
+
+    const baseValues = {
+      company_name: company.company_name || '',
+      contact_name: company.contact_name || '',
+      contact_emails: company.contact_emails || [],
+      status: round.status || STATUS.PENDING,
+      responsible_person_id: getRoundResponsiblePersonId(round),
+      start_date: startDate,
+      end_date: endDate,
+      renewal_no: renewalNo,
+      modules: source?.modules.map((module) => module.id) || [],
+      accounts: source?.accounts.length ? source.accounts : [{ login_email: '', password: '', note: '' }],
+      activity_message: ''
+    };
+
+    const values = {
+      ...baseValues,
+      ...(draft || {}),
+      contact_emails: draft?.contact_emails || baseValues.contact_emails,
+      modules: draft?.modules || baseValues.modules,
+      accounts: draft?.accounts?.length ? draft.accounts : baseValues.accounts
+    };
+
+    const selectedModuleIds = values.modules || [];
+    const accounts = values.accounts || [{ login_email: '', password: '', note: '' }];
+    const responsibleOptions = State.responsiblePeople.filter((person) => person.is_active || person.id === values.responsible_person_id);
 
     return `
-      ${renderTopbar(title, subtitle, `
-        <a class="btn ghost" href="#demos">กลับรายการ</a>
+      ${renderTopbar(title, '', `
+        <a class="btn ghost" href="#demos">กลับ</a>
       `)}
-      <form data-action="demo-save" data-edit-id="${escapeAttr(editId || '')}" data-renew-from-id="${escapeAttr(renewFromId || '')}" class="grid">
+      ${draft ? `
+        <div class="config-warning">
+          กู้คืนข้อมูลร่างที่ยังไม่ได้บันทึกแล้ว
+          <button class="btn small ghost" type="button" data-action="draft-clear" data-draft-key="${escapeAttr(draftKey)}">ล้างข้อมูลร่าง</button>
+        </div>
+      ` : ''}
+      ${!responsibleOptions.length ? `
+        <div class="config-warning">ยังไม่มี master ผู้รับผิดชอบ กรุณาเพิ่มในหน้า ตั้งค่าระบบ → ผู้รับผิดชอบ ก่อนสร้างเดโม</div>
+      ` : ''}
+      <form data-action="demo-save" data-draft-key="${escapeAttr(draftKey)}" data-edit-id="${escapeAttr(editId || '')}" data-renew-from-id="${escapeAttr(renewFromId || '')}" class="grid demo-form">
         <section class="panel form-section">
           <div class="section-title"><h2>ข้อมูลบริษัท</h2></div>
           <div class="grid two">
             <div class="field">
-              <label>ชื่อบริษัท *</label>
-              <input class="input" name="company_name" list="company-list" value="${escapeAttr(company.company_name || '')}" required>
+              <label>ชื่อบริษัท <span class="required">*</span></label>
+              <input class="input" name="company_name" list="company-list" value="${escapeAttr(values.company_name)}" required>
               <datalist id="company-list">
-                ${State.companies.map((c) => `<option value="${escapeAttr(c.company_name)}"></option>`).join('')}
+                ${State.companies.map((item) => `<option value="${escapeAttr(item.company_name)}"></option>`).join('')}
               </datalist>
             </div>
             <div class="field">
-              <label>ชื่อผู้ติดต่อ *</label>
-              <input class="input" name="contact_name" value="${escapeAttr(company.contact_name || '')}" required>
+              <label>ชื่อผู้ติดต่อ <span class="required">*</span></label>
+              <input class="input" name="contact_name" value="${escapeAttr(values.contact_name)}" required>
             </div>
           </div>
           <div class="field">
-            <label>อีเมลผู้ติดต่อ *</label>
-            ${renderChipInput('contact_emails', company.contact_emails || [], 'พิมพ์อีเมลแล้วกด Enter')}
+            <label>อีเมลผู้ติดต่อ <span class="required">*</span></label>
+            ${renderChipInput('contact_emails', values.contact_emails || [], 'พิมพ์อีเมลแล้วกด Enter')}
           </div>
         </section>
 
         <section class="panel form-section">
-          <div class="section-title"><h2>ข้อมูล Demo</h2></div>
+          <div class="section-title"><h2>ข้อมูลเดโม</h2></div>
           <div class="grid four">
             <div class="field">
-              <label>สถานะ *</label>
+              <label>สถานะ <span class="required">*</span></label>
               <select class="select" name="status" data-final-status-date required>
-                ${Object.values(STATUS).map((s) => option(s, s, round.status || STATUS.PENDING)).join('')}
+                ${Object.values(STATUS).map((status) => option(status, status, values.status)).join('')}
               </select>
             </div>
             <div class="field">
-              <label>ผู้รับผิดชอบ *</label>
-              <select class="select" name="responsible_user_id" required>
-                ${State.profiles.filter((p) => p.is_active).map((p) => option(p.id, `${displayName(p)} (${p.email})`, round.responsible_user_id || State.profile?.id)).join('')}
+              <label>ผู้รับผิดชอบ <span class="required">*</span></label>
+              <select class="select" name="responsible_person_id" required>
+                ${option('', 'เลือกผู้รับผิดชอบ', values.responsible_person_id)}
+                ${responsibleOptions.map((person) => option(person.id, person.name, values.responsible_person_id)).join('')}
               </select>
             </div>
             <div class="field">
-              <label>วันที่เริ่ม *</label>
-              <input class="input" type="date" name="start_date" value="${escapeAttr(startDate)}" required>
+              <label>วันที่เริ่ม <span class="required">*</span></label>
+              <input class="input" type="date" name="start_date" value="${escapeAttr(values.start_date)}" required>
             </div>
             <div class="field">
-              <label>วันที่สิ้นสุด *</label>
-              <input class="input" type="date" name="end_date" value="${escapeAttr(endDate)}" required>
+              <label>วันที่สิ้นสุด <span class="required">*</span></label>
+              <input class="input" type="date" name="end_date" value="${escapeAttr(values.end_date)}" required>
             </div>
           </div>
-          <input type="hidden" name="renewal_no" value="${escapeAttr(String(renewalNo))}">
+          <input type="hidden" name="renewal_no" value="${escapeAttr(String(values.renewal_no || 0))}">
           <div class="field">
-            <label>โมดูล *</label>
+            <label>โมดูล <span class="required">*</span></label>
             <div class="module-grid">
-              ${State.modules.filter((m) => m.is_active || selectedModuleIds.includes(m.id)).map((m) => `
+              ${State.modules.filter((module) => module.is_active || selectedModuleIds.includes(module.id)).map((module) => `
                 <label class="check-card">
-                  <input type="checkbox" name="modules" value="${m.id}" ${selectedModuleIds.includes(m.id) ? 'checked' : ''}>
-                  ${escapeHTML(m.name)} ${m.is_active ? '' : '<span class="badge pending">inactive</span>'}
+                  <input type="checkbox" name="modules" value="${module.id}" ${selectedModuleIds.includes(module.id) ? 'checked' : ''}>
+                  <span>${escapeHTML(module.name)}</span>
+                  ${module.is_active ? '' : '<span class="badge pending">ปิดใช้งาน</span>'}
                 </label>
               `).join('')}
             </div>
@@ -1123,29 +1179,23 @@
 
         <section class="panel form-section">
           <div class="section-title">
-            <h2>Demo Accounts</h2>
-            <button class="btn small secondary" data-action="account-add" type="button">+ เพิ่ม account</button>
+            <h2>บัญชีเดโม</h2>
+            <button class="btn small secondary" data-action="account-add" type="button">+ เพิ่มบัญชี</button>
           </div>
           <div id="accounts-list" class="grid">
-            ${accounts.map((acc) => renderAccountRow(acc)).join('')}
+            ${accounts.map((account) => renderAccountRow(account)).join('')}
           </div>
         </section>
 
         <section class="panel form-section">
           <div class="section-title"><h2>บันทึกความคืบหน้า</h2></div>
           <div class="field">
-            <label>Note / Activity Log</label>
-            <textarea class="textarea" name="activity_message" placeholder="เช่น โทรคุยแล้ว ลูกค้าขอทดลองเพิ่มอีก 7 วัน"></textarea>
-          </div>
-          <div class="field">
-            <label>ประเภท log</label>
-            <select class="select" name="log_type">
-              ${LOG_TYPES.map((t) => option(t, t, renewRow ? 'ต่ออายุ demo' : 'หมายเหตุทั่วไป')).join('')}
-            </select>
+            <label>ข้อความบันทึก</label>
+            <textarea class="textarea" name="activity_message" placeholder="เช่น โทรคุยแล้ว ลูกค้าขอต่ออายุอีก 7 วัน">${escapeHTML(values.activity_message || '')}</textarea>
           </div>
         </section>
 
-        <div class="actions">
+        <div class="actions form-actions">
           <button class="btn primary" type="submit">บันทึก</button>
           <a class="btn ghost" href="${editRow ? `#demos/${editId}` : '#demos'}">ยกเลิก</a>
         </div>
@@ -1153,20 +1203,20 @@
     `;
   }
 
-  function renderAccountRow(acc = {}) {
+  function renderAccountRow(account = {}) {
     return `
       <div class="account-row" data-account-row>
         <div class="field">
-          <label>อีเมลผู้ใช้งาน *</label>
-          <input class="input" type="email" name="account_login_email" value="${escapeAttr(acc.login_email || '')}" required>
+          <label>อีเมลผู้ใช้งาน <span class="required">*</span></label>
+          <input class="input" type="email" name="account_login_email" value="${escapeAttr(account.login_email || '')}" required>
         </div>
         <div class="field">
-          <label>รหัสผ่าน *</label>
-          <input class="input" type="password" name="account_password" value="${escapeAttr(acc.password || '')}" required>
+          <label>รหัสผ่าน <span class="required">*</span></label>
+          <input class="input" type="text" name="account_password" value="${escapeAttr(account.password || '')}" required autocomplete="off">
         </div>
         <div class="field">
-          <label>โน๊ต account</label>
-          <input class="input" name="account_note" value="${escapeAttr(acc.note || '')}">
+          <label>โน้ตบัญชี</label>
+          <input class="input" name="account_note" value="${escapeAttr(account.note || '')}">
         </div>
         <button class="btn danger" type="button" data-action="account-remove">ลบ</button>
       </div>
@@ -1186,53 +1236,53 @@
       .sort((a, b) => new Date(b.round.created_at || 0) - new Date(a.round.created_at || 0));
 
     return `
-      ${renderTopbar(row.company.company_name, `รายละเอียดบริษัทและ demo timeline`, `
-        <a class="btn ghost" href="#demos">กลับรายการ</a>
+      ${renderTopbar(row.company.company_name, '', `
+        <a class="btn ghost" href="#demos">กลับ</a>
         <a class="btn secondary" href="#demos/edit/${row.round.id}">แก้ไข</a>
         <a class="btn success" href="#demos/new/renew/${row.round.id}">ต่ออายุ</a>
-        <button class="btn primary" data-action="email-preview" data-id="${row.round.id}">Preview Email</button>
+        <button class="btn primary" data-action="email-preview" data-id="${row.round.id}">ตัวอย่างอีเมล</button>
         <button class="btn ghost" data-action="print">พิมพ์</button>
       `)}
       <section class="grid two">
         <div class="card">
           <div class="section-title"><h2>ข้อมูลบริษัท</h2></div>
-          <dl class="kv" style="margin-top:14px">
+          <dl class="kv">
             <dt>บริษัท</dt><dd>${escapeHTML(row.company.company_name)}</dd>
             <dt>ผู้ติดต่อ</dt><dd>${escapeHTML(row.company.contact_name)}</dd>
             <dt>อีเมลผู้ติดต่อ</dt><dd>${escapeHTML((row.company.contact_emails || []).join(', '))}</dd>
-            <dt>โน๊ตล่าสุด</dt><dd>${escapeHTML(row.latestLog?.message || '-')}</dd>
+            <dt>บันทึกล่าสุด</dt><dd>${escapeHTML(row.latestLog?.message || '-')}</dd>
           </dl>
         </div>
         <div class="card">
-          <div class="section-title"><h2>Demo Round ปัจจุบัน</h2></div>
-          <dl class="kv" style="margin-top:14px">
+          <div class="section-title"><h2>รอบเดโมปัจจุบัน</h2></div>
+          <dl class="kv">
             <dt>สถานะ</dt><dd>${statusBadge(row.effectiveStatus)}</dd>
             <dt>ผู้รับผิดชอบ</dt><dd>${escapeHTML(displayName(row.responsible))}</dd>
             <dt>วันที่เริ่ม</dt><dd>${formatDate(row.round.start_date)}</dd>
             <dt>วันที่สิ้นสุด</dt><dd>${formatDate(row.round.end_date)}</dd>
             <dt>วันทั้งหมด</dt><dd>${row.totalDays}</dd>
             <dt>วันคงเหลือ</dt><dd>${formatRemaining(row.remainingDays)}</dd>
-            <dt>โมดูล</dt><dd>${escapeHTML(row.modules.map((m) => m.name).join(', ') || '-')}</dd>
-            <dt>ครั้งที่ต่ออายุ</dt><dd>${row.round.renewal_no || 0}</dd>
+            <dt>โมดูล</dt><dd>${escapeHTML(row.modules.map((module) => module.name).join(', ') || '-')}</dd>
+            <dt>ต่ออายุครั้งที่</dt><dd>${row.round.renewal_no || 0}</dd>
           </dl>
         </div>
       </section>
 
-      <section class="grid two" style="margin-top:16px">
+      <section class="grid two content-gap">
         <div class="card">
-          <div class="section-title"><h2>Demo Accounts</h2></div>
+          <div class="section-title"><h2>บัญชีเดโม</h2></div>
           ${renderAccounts(row.accounts)}
         </div>
         <div class="card">
-          <div class="section-title"><h2>ประวัติ Demo Rounds</h2></div>
+          <div class="section-title"><h2>ประวัติรอบเดโม</h2></div>
           ${history.length ? `
-            <div class="timeline" style="margin-top:12px">
+            <div class="timeline">
               ${history.map((item) => `
                 <div class="timeline-item">
                   <div class="timeline-date">${formatDate(item.round.created_at)}</div>
                   <div class="timeline-body">
-                    <strong>${statusBadge(item.effectiveStatus)} รอบต่ออายุ ${item.round.renewal_no || 0}</strong>
-                    <p>${formatDate(item.round.start_date)} - ${formatDate(item.round.end_date)} · ${item.modules.map((m) => escapeHTML(m.name)).join(', ')}</p>
+                    <strong>${statusBadge(item.effectiveStatus)} ต่ออายุครั้งที่ ${item.round.renewal_no || 0}</strong>
+                    <p>${formatDate(item.round.start_date)} - ${formatDate(item.round.end_date)} · ${item.modules.map((module) => escapeHTML(module.name)).join(', ')}</p>
                     <a class="btn small ghost" href="#demos/${item.round.id}">ดูรอบนี้</a>
                   </div>
                 </div>
@@ -1242,20 +1292,14 @@
         </div>
       </section>
 
-      <section class="card" style="margin-top:16px">
-        <div class="section-title"><h2>Activity Timeline ของบริษัท</h2></div>
-        <form data-action="activity-add" data-company-id="${row.company.id}" data-round-id="${row.round.id}" class="grid two" style="margin-top:14px">
+      <section class="card content-gap">
+        <div class="section-title"><h2>บันทึกความคืบหน้าของบริษัท</h2></div>
+        <form data-action="activity-add" data-company-id="${row.company.id}" data-round-id="${row.round.id}" class="log-form">
           <div class="field">
-            <label>ประเภท</label>
-            <select class="select" name="log_type">
-              ${LOG_TYPES.map((t) => option(t, t, 'หมายเหตุทั่วไป')).join('')}
-            </select>
-          </div>
-          <div class="field">
-            <label>รายละเอียด</label>
+            <label>ข้อความบันทึก <span class="required">*</span></label>
             <input class="input" name="message" placeholder="บันทึกความคืบหน้าของบริษัทนี้" required>
           </div>
-          <button class="btn primary" type="submit">เพิ่ม Log</button>
+          <button class="btn primary" type="submit">เพิ่มบันทึก</button>
         </form>
         ${renderTimeline(companyLogs)}
       </section>
@@ -1263,18 +1307,18 @@
   }
 
   function renderAccounts(accounts) {
-    if (!accounts.length) return '<div class="empty">ไม่มี demo account</div>';
+    if (!accounts.length) return '<div class="empty">ไม่มีบัญชีเดโม</div>';
 
     return `
-      <div class="grid" style="margin-top:12px">
+      <div class="grid account-cards">
         ${accounts.map((account) => `
           <div class="card">
             <strong>${escapeHTML(account.login_email)}</strong>
-            <div class="actions" style="margin-top:8px">
+            <div class="actions account-actions">
               <span class="password-mask" data-password="${escapeAttr(account.password)}">••••••••</span>
               <button class="btn small ghost" data-action="password-toggle">ดู/ซ่อน</button>
-              <button class="btn small ghost" data-action="copy" data-copy="${escapeAttr(account.login_email)}">copy email</button>
-              <button class="btn small ghost" data-action="copy" data-copy="${escapeAttr(account.password)}">copy password</button>
+              <button class="btn small ghost" data-action="copy" data-copy="${escapeAttr(account.login_email)}">คัดลอกอีเมล</button>
+              <button class="btn small ghost" data-action="copy" data-copy="${escapeAttr(account.password)}">คัดลอกรหัสผ่าน</button>
             </div>
             ${account.note ? `<p class="muted">${escapeHTML(account.note)}</p>` : ''}
           </div>
@@ -1284,23 +1328,20 @@
   }
 
   function renderTimeline(logs) {
-    if (!logs.length) return '<div class="empty">ยังไม่มี Activity Log</div>';
+    if (!logs.length) return '<div class="empty">ยังไม่มีบันทึก</div>';
 
     const latestId = logs[0]?.id;
     return `
-      <div class="timeline" style="margin-top:18px">
+      <div class="timeline">
         ${logs.map((log) => {
           const author = findProfile(log.created_by);
-          const canEdit = userIsAdmin() || (log.id === latestId && log.created_by === State.profile?.id);
+          const canEdit = canModifyLog(log, latestId);
           return `
             <div class="timeline-item">
               <div class="timeline-date">${formatDateTime(log.created_at)}</div>
               <div class="timeline-body">
-                <div class="actions" style="justify-content:space-between">
-                  <div>
-                    <span class="badge">${escapeHTML(log.log_type)}</span>
-                    <span class="muted small-text">โดย ${escapeHTML(displayName(author))}</span>
-                  </div>
+                <div class="actions timeline-head">
+                  <span class="muted small-text">โดย ${escapeHTML(displayName(author))}</span>
                   ${canEdit ? `
                     <div class="actions">
                       <button class="btn small ghost" data-action="log-edit" data-id="${log.id}">แก้ไข</button>
@@ -1319,15 +1360,17 @@
 
   function renderAdmin() {
     return `
-      ${renderTopbar('Admin', 'จัดการ users, modules, email templates และ settings')}
+      ${renderTopbar('ตั้งค่าระบบ')}
       <section class="card">
         <div class="admin-tabs">
-          ${adminTab('users', 'Users')}
-          ${adminTab('modules', 'Modules')}
-          ${adminTab('templates', 'Email Templates')}
-          ${adminTab('settings', 'Settings')}
+          ${adminTab('users', 'ผู้ใช้ระบบ')}
+          ${adminTab('responsible', 'ผู้รับผิดชอบ')}
+          ${adminTab('modules', 'โมดูล')}
+          ${adminTab('templates', 'เทมเพลตอีเมล')}
+          ${adminTab('settings', 'ตั้งค่าอีเมล')}
         </div>
         ${State.adminTab === 'users' ? renderAdminUsers() : ''}
+        ${State.adminTab === 'responsible' ? renderAdminResponsiblePeople() : ''}
         ${State.adminTab === 'modules' ? renderAdminModules() : ''}
         ${State.adminTab === 'templates' ? renderAdminTemplates() : ''}
         ${State.adminTab === 'settings' ? renderAdminSettings() : ''}
@@ -1342,43 +1385,97 @@
   function renderAdminUsers() {
     return `
       <div class="config-warning">
-        เพื่อความปลอดภัย การสร้าง Auth User/ตั้งรหัสผ่านต้องทำใน Supabase Dashboard หรือ backend ที่เก็บ service_role ได้เท่านั้น
-        หน้า Admin นี้ใช้แก้ profile, role และสถานะ active ของผู้ใช้ที่มีอยู่แล้ว
+        การสร้างผู้ใช้และตั้งรหัสผ่านต้องทำใน Supabase Dashboard หรือ backend ที่เก็บ service_role ได้เท่านั้น
       </div>
       <div class="table-wrap">
         <table>
           <thead>
             <tr>
-              <th>Email</th>
-              <th>ชื่อ</th>
-              <th>Role</th>
-              <th>Active</th>
+              <th>อีเมล</th>
+              <th>ชื่อที่แสดง</th>
+              <th>สิทธิ์</th>
+              <th>สถานะ</th>
               <th>บันทึก</th>
             </tr>
           </thead>
           <tbody>
-            ${State.profiles.map((p) => `
+            ${State.profiles.map((profile) => `
               <tr>
-                <td>${escapeHTML(p.email)}</td>
+                <td>${escapeHTML(profile.email)}</td>
                 <td>
-                  <form data-action="admin-profile-save" id="profile-${p.id}">
-                    <input type="hidden" name="id" value="${p.id}">
-                    <input class="input" name="full_name" value="${escapeAttr(p.full_name || '')}">
+                  <form data-action="admin-profile-save" id="profile-${profile.id}">
+                    <input type="hidden" name="id" value="${profile.id}">
+                    <input class="input" name="full_name" value="${escapeAttr(profile.full_name || '')}">
                   </form>
                 </td>
                 <td>
-                  <select class="select" name="role" form="profile-${p.id}">
-                    ${option('user', 'user', p.role)}
-                    ${option('admin', 'admin', p.role)}
+                  <select class="select" name="role" form="profile-${profile.id}">
+                    ${option('user', 'ผู้ใช้', profile.role)}
+                    ${option('admin', 'ผู้ดูแล', profile.role)}
                   </select>
                 </td>
                 <td>
-                  <select class="select" name="is_active" form="profile-${p.id}">
-                    ${option('true', 'active', String(Boolean(p.is_active)))}
-                    ${option('false', 'inactive', String(Boolean(p.is_active)))}
+                  <select class="select" name="is_active" form="profile-${profile.id}">
+                    ${option('true', 'เปิดใช้งาน', String(Boolean(profile.is_active)))}
+                    ${option('false', 'ปิดใช้งาน', String(Boolean(profile.is_active)))}
                   </select>
                 </td>
-                <td><button class="btn small primary" type="submit" form="profile-${p.id}">บันทึก</button></td>
+                <td><button class="btn small primary" type="submit" form="profile-${profile.id}">บันทึก</button></td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
+    `;
+  }
+
+  function renderAdminResponsiblePeople() {
+    return `
+      <form data-action="admin-responsible-save" class="panel inline-form">
+        <input type="hidden" name="id" value="">
+        <div class="field">
+          <label>ชื่อผู้รับผิดชอบ <span class="required">*</span></label>
+          <input class="input" name="name" placeholder="เช่น คุณสมชาย" required>
+        </div>
+        <div class="field">
+          <label>อีเมล <span class="required">*</span></label>
+          <input class="input" type="email" name="email" placeholder="name@example.com" required>
+        </div>
+        <div class="field">
+          <label>เบอร์โทร</label>
+          <input class="input" name="phone" placeholder="08x-xxx-xxxx">
+        </div>
+        <button class="btn primary" type="submit">เพิ่มผู้รับผิดชอบ</button>
+      </form>
+      <div class="table-wrap content-gap">
+        <table>
+          <thead>
+            <tr>
+              <th>ชื่อ</th>
+              <th>อีเมล</th>
+              <th>เบอร์โทร</th>
+              <th>สถานะ</th>
+              <th>บันทึก</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${State.responsiblePeople.map((person) => `
+              <tr>
+                <td>
+                  <form data-action="admin-responsible-save" id="responsible-${person.id}">
+                    <input type="hidden" name="id" value="${person.id}">
+                    <input class="input" name="name" value="${escapeAttr(person.name || '')}" required>
+                  </form>
+                </td>
+                <td><input class="input" type="email" name="email" value="${escapeAttr(person.email || '')}" form="responsible-${person.id}" required></td>
+                <td><input class="input" name="phone" value="${escapeAttr(person.phone || '')}" form="responsible-${person.id}"></td>
+                <td>
+                  <select class="select" name="is_active" form="responsible-${person.id}">
+                    ${option('true', 'เปิดใช้งาน', String(Boolean(person.is_active)))}
+                    ${option('false', 'ปิดใช้งาน', String(Boolean(person.is_active)))}
+                  </select>
+                </td>
+                <td><button class="btn small primary" type="submit" form="responsible-${person.id}">บันทึก</button></td>
               </tr>
             `).join('')}
           </tbody>
@@ -1389,26 +1486,51 @@
 
   function renderAdminModules() {
     return `
-      <form data-action="admin-module-save" class="filters">
-        <div class="field" style="min-width:280px">
-          <label>เพิ่มโมดูล</label>
-          <input class="input" name="name" placeholder="เช่น Sales CRM" required>
+      <form data-action="admin-module-save" class="panel inline-form">
+        <input type="hidden" name="id" value="">
+        <div class="field">
+          <label>ชื่อโมดูล <span class="required">*</span></label>
+          <input class="input" name="name" placeholder="เช่น CRM" required>
         </div>
-        <button class="btn primary" type="submit">เพิ่ม</button>
+        <div class="field">
+          <label>รายละเอียด</label>
+          <input class="input" name="description" placeholder="คำอธิบายสั้น ๆ">
+        </div>
+        <div class="field">
+          <label>ลำดับ</label>
+          <input class="input" type="number" name="sort_order" value="100">
+        </div>
+        <button class="btn primary" type="submit">เพิ่มโมดูล</button>
       </form>
-      <div class="table-wrap">
+      <div class="table-wrap content-gap">
         <table>
-          <thead><tr><th>ชื่อโมดูล</th><th>สถานะ</th><th>Action</th></tr></thead>
+          <thead>
+            <tr>
+              <th>ชื่อโมดูล</th>
+              <th>รายละเอียด</th>
+              <th>ลำดับ</th>
+              <th>สถานะ</th>
+              <th>บันทึก</th>
+            </tr>
+          </thead>
           <tbody>
-            ${State.modules.map((m) => `
+            ${State.modules.map((module) => `
               <tr>
-                <td>${escapeHTML(m.name)}</td>
-                <td>${m.is_active ? '<span class="badge active">active</span>' : '<span class="badge pending">inactive</span>'}</td>
                 <td>
-                  <button class="btn small ${m.is_active ? 'danger' : 'success'}" data-action="admin-module-toggle" data-id="${m.id}" data-active="${m.is_active}">
-                    ${m.is_active ? 'Deactivate' : 'Activate'}
-                  </button>
+                  <form data-action="admin-module-save" id="module-${module.id}">
+                    <input type="hidden" name="id" value="${module.id}">
+                    <input class="input" name="name" value="${escapeAttr(module.name || '')}" required>
+                  </form>
                 </td>
+                <td><input class="input" name="description" value="${escapeAttr(module.description || '')}" form="module-${module.id}"></td>
+                <td><input class="input" type="number" name="sort_order" value="${escapeAttr(String(module.sort_order ?? 100))}" form="module-${module.id}"></td>
+                <td>
+                  <select class="select" name="is_active" form="module-${module.id}">
+                    ${option('true', 'เปิดใช้งาน', String(Boolean(module.is_active)))}
+                    ${option('false', 'ปิดใช้งาน', String(Boolean(module.is_active)))}
+                  </select>
+                </td>
+                <td><button class="btn small primary" type="submit" form="module-${module.id}">บันทึก</button></td>
               </tr>
             `).join('')}
           </tbody>
@@ -1420,22 +1542,22 @@
   function renderAdminTemplates() {
     return `
       <div class="grid two">
-        ${State.emailTemplates.map((tpl) => `
+        ${State.emailTemplates.map((template) => `
           <form data-action="admin-template-save" class="panel form-section">
             <div class="section-title">
-              <h2>${escapeHTML(tpl.name || tpl.template_key)}</h2>
-              <button class="btn small ghost" data-action="admin-template-reset" data-key="${escapeAttr(tpl.template_key)}" type="button">reset default</button>
+              <h2>${escapeHTML(template.name || template.template_key)}</h2>
+              <button class="btn small ghost" data-action="admin-template-reset" data-key="${escapeAttr(template.template_key)}" type="button">คืนค่าเริ่มต้น</button>
             </div>
-            <input type="hidden" name="id" value="${tpl.id}">
+            <input type="hidden" name="id" value="${template.id}">
             <div class="field">
-              <label>Subject</label>
-              <input class="input" name="subject" value="${escapeAttr(tpl.subject || '')}" required>
+              <label>หัวข้ออีเมล <span class="required">*</span></label>
+              <input class="input" name="subject" value="${escapeAttr(template.subject || '')}" required>
             </div>
             <div class="field">
-              <label>Body</label>
-              <textarea class="textarea" name="body" rows="14" required>${escapeHTML(tpl.body || '')}</textarea>
+              <label>เนื้อหาอีเมล <span class="required">*</span></label>
+              <textarea class="textarea" name="body" rows="14" required>${escapeHTML(template.body || '')}</textarea>
             </div>
-            <button class="btn primary" type="submit">บันทึก Template</button>
+            <button class="btn primary" type="submit">บันทึกเทมเพลต</button>
           </form>
         `).join('')}
       </div>
@@ -1449,30 +1571,29 @@
     return `
       <form data-action="admin-setting-save" class="grid">
         <div class="field">
-          <label>Fixed CC emails</label>
+          <label>อีเมล CC ประจำ</label>
           ${renderChipInput('fixed_cc_emails', Array.isArray(fixedCc) ? fixedCc : [], 'พิมพ์อีเมลแล้วกด Enter')}
         </div>
         <div class="field">
           <label>Google Apps Script Web App URL</label>
           <input class="input" name="apps_script_url" value="${escapeAttr(appsScriptUrl)}" placeholder="https://script.google.com/macros/s/.../exec">
-          <p class="muted small-text">URL นี้เป็น public endpoint ได้ แต่ห้ามใส่ secret ใน frontend</p>
         </div>
-        <button class="btn primary" type="submit">บันทึก Settings</button>
+        <button class="btn primary" type="submit">บันทึกการตั้งค่า</button>
       </form>
     `;
   }
 
   function renderForbidden() {
     return `
-      ${renderTopbar('ไม่มีสิทธิ์เข้าใช้งาน', 'หน้านี้สำหรับ admin เท่านั้น')}
-      <section class="card empty">กรุณาติดต่อ admin หากต้องการสิทธิ์เพิ่มเติม</section>
+      ${renderTopbar('ไม่มีสิทธิ์เข้าใช้งาน')}
+      <section class="card empty">กรุณาติดต่อผู้ดูแลระบบ</section>
     `;
   }
 
   function renderNotFound() {
     return `
-      ${renderTopbar('ไม่พบหน้า', 'URL นี้ไม่มีในระบบ')}
-      <section class="card empty"><a class="btn primary" href="#dashboard">กลับ Dashboard</a></section>
+      ${renderTopbar('ไม่พบหน้า')}
+      <section class="card empty"><a class="btn primary" href="#dashboard">กลับแดชบอร์ด</a></section>
     `;
   }
 
@@ -1486,13 +1607,13 @@
       login_email: $('[name="account_login_email"]', row)?.value.trim(),
       password: $('[name="account_password"]', row)?.value,
       note: $('[name="account_note"]', row)?.value.trim() || null
-    })).filter((acc) => acc.login_email || acc.password || acc.note);
+    })).filter((account) => account.login_email || account.password || account.note);
 
     validateDemoForm(form, contactEmails, selectedModules, accounts);
 
     let companyId;
     const companyName = form.company_name.value.trim();
-    const existingByName = State.companies.find((c) => normalize(c.company_name) === normalize(companyName));
+    const existingByName = State.companies.find((company) => normalize(company.company_name) === normalize(companyName));
     const sourceRow = editId ? getDemoRow(editId) : null;
 
     if (sourceRow) {
@@ -1527,7 +1648,8 @@
     const roundPayload = {
       company_id: companyId,
       status,
-      responsible_user_id: form.responsible_user_id.value,
+      responsible_person_id: form.responsible_person_id.value,
+      responsible_user_id: State.profile.id,
       start_date: form.start_date.value,
       end_date: FINAL_STATUSES.has(status) ? todayISO() : form.end_date.value,
       renewal_no: Number(form.renewal_no.value || 0),
@@ -1556,20 +1678,20 @@
       await insertActivityLog({
         company_id: companyId,
         demo_round_id: roundId,
-        log_type: form.log_type.value,
         message
       });
     } else if (!editId) {
       await insertActivityLog({
         company_id: companyId,
         demo_round_id: roundId,
-        log_type: renewFromId ? 'ต่ออายุ demo' : 'หมายเหตุทั่วไป',
-        message: renewFromId ? 'สร้าง demo round ใหม่จากการต่ออายุ' : 'สร้าง demo record ใหม่'
+        log_type: renewFromId ? 'ต่ออายุ demo' : DEFAULT_LOG_TYPE,
+        message: renewFromId ? 'สร้างรอบเดโมใหม่จากการต่ออายุ' : 'สร้างรายการเดโมใหม่'
       });
     }
 
+    clearDemoDraft(form.dataset.draftKey || '');
     await loadAllData();
-    toast('บันทึก Demo สำเร็จ', 'success');
+    toast('บันทึกเดโมสำเร็จ', 'success');
     location.hash = `#demos/${roundId}`;
   }
 
@@ -1579,10 +1701,11 @@
     if (!emails.length) throw new Error('กรุณาเพิ่มอีเมลผู้ติดต่ออย่างน้อย 1 รายการ');
     const invalidEmails = emails.filter((email) => !isEmail(email));
     if (invalidEmails.length) throw new Error(`รูปแบบอีเมลไม่ถูกต้อง: ${invalidEmails.join(', ')}`);
+    if (!form.responsible_person_id.value) throw new Error('กรุณาเลือกผู้รับผิดชอบ');
     if (!modules.length) throw new Error('กรุณาเลือกโมดูลอย่างน้อย 1 รายการ');
-    if (!accounts.length) throw new Error('กรุณาเพิ่ม demo account อย่างน้อย 1 รายการ');
+    if (!accounts.length) throw new Error('กรุณาเพิ่มบัญชีเดโมอย่างน้อย 1 รายการ');
     for (const account of accounts) {
-      if (!isEmail(account.login_email || '')) throw new Error(`อีเมล demo account ไม่ถูกต้อง: ${account.login_email || '-'}`);
+      if (!isEmail(account.login_email || '')) throw new Error(`อีเมลบัญชีเดโมไม่ถูกต้อง: ${account.login_email || '-'}`);
       if (!account.password) throw new Error(`กรุณากรอกรหัสผ่านของ ${account.login_email}`);
     }
     if (form.end_date.value < form.start_date.value) throw new Error('วันที่สิ้นสุดต้องไม่ก่อนวันที่เริ่ม');
@@ -1610,23 +1733,23 @@
 
   async function addActivityLog(form) {
     const message = form.message.value.trim();
-    if (!message) throw new Error('กรุณากรอกรายละเอียด log');
+    if (!message) throw new Error('กรุณากรอกรายละเอียดบันทึก');
 
     await insertActivityLog({
       company_id: form.dataset.companyId,
       demo_round_id: form.dataset.roundId,
-      log_type: form.log_type.value,
       message
     });
 
     form.reset();
     await loadAllData();
     render();
-    toast('เพิ่ม Activity Log แล้ว', 'success');
+    toast('เพิ่มบันทึกแล้ว', 'success');
   }
 
   async function insertActivityLog(payload) {
     const { error } = await State.sb.from('activity_logs').insert({
+      log_type: payload.log_type || DEFAULT_LOG_TYPE,
       ...payload,
       created_by: State.profile.id
     });
@@ -1637,10 +1760,15 @@
     const log = State.activityLogs.find((item) => item.id === id);
     if (!log) return;
 
-    const message = window.prompt('แก้ไขรายละเอียด log', log.message);
+    if (!canModifyLog(log)) {
+      toast('แก้ไขได้เฉพาะบันทึกล่าสุดเท่านั้น', 'error');
+      return;
+    }
+
+    const message = window.prompt('แก้ไขข้อความบันทึก', log.message);
     if (message === null) return;
     if (!message.trim()) {
-      toast('ข้อความ log ห้ามว่าง', 'warning');
+      toast('ข้อความบันทึกห้ามว่าง', 'warning');
       return;
     }
 
@@ -1652,11 +1780,19 @@
 
     await loadAllData();
     render();
-    toast('แก้ไข log แล้ว', 'success');
+    toast('แก้ไขบันทึกแล้ว', 'success');
   }
 
   async function deleteLog(id) {
-    if (!window.confirm('ลบ log นี้หรือไม่? ระบบจะ soft delete เพื่อเก็บ audit')) return;
+    const log = State.activityLogs.find((item) => item.id === id);
+    if (!log) return;
+
+    if (!canModifyLog(log)) {
+      toast('ลบได้เฉพาะบันทึกล่าสุดเท่านั้น', 'error');
+      return;
+    }
+
+    if (!window.confirm('ลบบันทึกนี้หรือไม่?')) return;
 
     const { error } = await State.sb.from('activity_logs').update({
       deleted_at: new Date().toISOString()
@@ -1665,7 +1801,7 @@
 
     await loadAllData();
     render();
-    toast('ลบ log แล้ว', 'success');
+    toast('ลบบันทึกแล้ว', 'success');
   }
 
   async function softDeleteDemo(roundId) {
@@ -1676,7 +1812,7 @@
       return;
     }
 
-    if (!window.confirm(`ลบ Demo ของ ${row.company.company_name} หรือไม่?`)) return;
+    if (!window.confirm(`ลบเดโมของ ${row.company.company_name} หรือไม่?`)) return;
 
     const { error } = await State.sb.from('demo_rounds').update({
       deleted_at: new Date().toISOString()
@@ -1687,17 +1823,17 @@
       company_id: row.company.id,
       demo_round_id: row.round.id,
       log_type: 'หมายเหตุทั่วไป',
-      message: 'ลบ demo round แบบ soft delete'
+      message: 'ลบรอบเดโมแบบ soft delete'
     }).catch(() => undefined);
 
     await loadAllData();
     render();
-    toast('ลบ Demo แล้ว', 'success');
+    toast('ลบเดโมแล้ว', 'success');
   }
 
   function openEmailPreview(roundId, type = 'first_demo_email') {
     const row = getDemoRow(roundId);
-    if (!row) return toast('ไม่พบ demo round', 'error');
+    if (!row) return toast('ไม่พบรอบเดโม', 'error');
 
     const tpl = getTemplate(type);
     const rendered = renderEmail(row, tpl);
@@ -1708,20 +1844,20 @@
     showModal(`
       <header>
         <div>
-          <strong>Preview Email</strong>
+          <strong>ตัวอย่างอีเมล</strong>
           <div class="muted small-text">${escapeHTML(tpl.name || type)}</div>
         </div>
         <button class="btn small ghost" data-action="modal-close">ปิด</button>
       </header>
       <main class="grid">
-        <div><strong>To:</strong> ${escapeHTML((row.company.contact_emails || []).join(', '))}</div>
-        <div><strong>CC:</strong> ${escapeHTML(cc.join(', ') || '-')}</div>
-        <div><strong>Subject:</strong> ${escapeHTML(rendered.subject)}</div>
+        <div><strong>ถึง:</strong> ${escapeHTML((row.company.contact_emails || []).join(', '))}</div>
+        <div><strong>สำเนาถึง:</strong> ${escapeHTML(cc.join(', ') || '-')}</div>
+        <div><strong>หัวข้อ:</strong> ${escapeHTML(rendered.subject)}</div>
         <div class="email-preview">${escapeHTML(rendered.body)}</div>
       </main>
       <footer>
         <button class="btn ghost" data-action="modal-close">ยกเลิก</button>
-        <button class="btn primary" data-action="email-send" data-id="${roundId}" data-type="${escapeAttr(type)}">ส่ง / Queue Email</button>
+        <button class="btn primary" data-action="email-send" data-id="${roundId}" data-type="${escapeAttr(type)}">ส่ง / บันทึกคิวอีเมล</button>
       </footer>
     `);
   }
@@ -1795,7 +1931,7 @@
     render();
 
     if (status === 'sent') toast('ส่งอีเมลสำเร็จ', 'success');
-    else if (status === 'queued') toast('บันทึก email log เป็น queued แล้ว', 'warning');
+    else if (status === 'queued') toast('บันทึกคิวอีเมลแล้ว', 'warning');
     else toast(`ส่งอีเมลไม่สำเร็จ: ${errorMessage}`, 'error');
   }
 
@@ -1807,7 +1943,7 @@
     });
 
     if (!dueRows.length) {
-      toast('ไม่มีรายการที่ต้องส่ง reminder วันนี้', 'success');
+      toast('ไม่มีรายการที่ต้องส่งอีเมลเตือนวันนี้', 'success');
       return;
     }
 
@@ -1835,29 +1971,82 @@
         company_id: row.company.id,
         demo_round_id: row.round.id,
         log_type: 'ส่งอีเมล',
-        message: 'queue reminder email ก่อนหมดอายุ 3 วัน'
+        message: 'สร้างคิวอีเมลเตือนก่อนหมดอายุ 3 วัน'
       }).catch(() => undefined);
     }
 
     await loadAllData();
     render();
-    toast(`queue reminder แล้ว ${dueRows.length} รายการ`, 'success');
+    toast(`สร้างคิวอีเมลเตือนแล้ว ${dueRows.length} รายการ`, 'success');
   }
 
-  async function saveModule(form) {
-    const name = form.name.value.trim();
-    if (!name) throw new Error('กรุณากรอกชื่อโมดูล');
+  async function saveResponsiblePerson(form) {
+    const id = form.id.value;
+    const payload = {
+      name: form.name.value.trim(),
+      email: form.email.value.trim(),
+      phone: form.phone.value.trim() || null,
+      is_active: form.is_active ? form.is_active.value === 'true' : true,
+      updated_at: new Date().toISOString()
+    };
 
-    const { error } = await State.sb.from('modules').insert({ name });
+    if (!payload.name) throw new Error('กรุณากรอกชื่อผู้รับผิดชอบ');
+    if (!isEmail(payload.email)) throw new Error('อีเมลผู้รับผิดชอบไม่ถูกต้อง');
+
+    const query = id
+      ? State.sb.from('responsible_people').update(payload).eq('id', id)
+      : State.sb.from('responsible_people').insert(payload);
+
+    const { error } = await query;
     if (error) throw error;
+
     form.reset();
     await loadAllData();
     render();
-    toast('เพิ่มโมดูลแล้ว', 'success');
+    toast('บันทึกผู้รับผิดชอบแล้ว', 'success');
+  }
+
+  async function toggleResponsiblePerson(id, isActive) {
+    const { error } = await State.sb.from('responsible_people').update({
+      is_active: !isActive,
+      updated_at: new Date().toISOString()
+    }).eq('id', id);
+    if (error) throw error;
+    await loadAllData();
+    render();
+    toast('อัปเดตผู้รับผิดชอบแล้ว', 'success');
+  }
+
+  async function saveModule(form) {
+    const id = form.id.value;
+    const payload = {
+      name: form.name.value.trim(),
+      description: form.description?.value.trim() || null,
+      sort_order: Number(form.sort_order?.value || 100),
+      is_active: form.is_active ? form.is_active.value === 'true' : true,
+      updated_at: new Date().toISOString()
+    };
+
+    if (!payload.name) throw new Error('กรุณากรอกชื่อโมดูล');
+
+    const query = id
+      ? State.sb.from('modules').update(payload).eq('id', id)
+      : State.sb.from('modules').insert(payload);
+
+    const { error } = await query;
+    if (error) throw error;
+
+    form.reset();
+    await loadAllData();
+    render();
+    toast('บันทึกโมดูลแล้ว', 'success');
   }
 
   async function toggleModule(id, isActive) {
-    const { error } = await State.sb.from('modules').update({ is_active: !isActive }).eq('id', id);
+    const { error } = await State.sb.from('modules').update({
+      is_active: !isActive,
+      updated_at: new Date().toISOString()
+    }).eq('id', id);
     if (error) throw error;
     await loadAllData();
     render();
@@ -1879,7 +2068,7 @@
 
     await loadAllData();
     render();
-    toast('บันทึก profile แล้ว', 'success');
+    toast('บันทึกผู้ใช้แล้ว', 'success');
   }
 
   async function saveEmailTemplate(form) {
@@ -1893,7 +2082,7 @@
 
     await loadAllData();
     render();
-    toast('บันทึก template แล้ว', 'success');
+    toast('บันทึกเทมเพลตแล้ว', 'success');
   }
 
   async function resetTemplate(key) {
@@ -1911,13 +2100,13 @@
 
     await loadAllData();
     render();
-    toast('reset template แล้ว', 'success');
+    toast('คืนค่าเทมเพลตแล้ว', 'success');
   }
 
   async function saveSettings(form) {
     const fixedCc = getChipValues(form, 'fixed_cc_emails');
     const invalid = fixedCc.filter((email) => !isEmail(email));
-    if (invalid.length) throw new Error(`Fixed CC ไม่ถูกต้อง: ${invalid.join(', ')}`);
+    if (invalid.length) throw new Error(`อีเมล CC ไม่ถูกต้อง: ${invalid.join(', ')}`);
 
     const appsScriptUrl = form.apps_script_url.value.trim();
 
@@ -1933,22 +2122,22 @@
 
     await loadAllData();
     render();
-    toast('บันทึก settings แล้ว', 'success');
+    toast('บันทึกการตั้งค่าแล้ว', 'success');
   }
 
   function getDemoRows() {
     return State.rounds
       .map((round) => {
-        const company = State.companies.find((c) => c.id === round.company_id);
+        const company = State.companies.find((item) => item.id === round.company_id);
         if (!company) return null;
 
         const roundModuleIds = State.roundModules
-          .filter((rm) => rm.demo_round_id === round.id)
-          .map((rm) => rm.module_id);
+          .filter((item) => item.demo_round_id === round.id)
+          .map((item) => item.module_id);
 
-        const modules = State.modules.filter((m) => roundModuleIds.includes(m.id));
-        const accounts = State.accounts.filter((acc) => acc.demo_round_id === round.id);
-        const responsible = findProfile(round.responsible_user_id);
+        const modules = State.modules.filter((module) => roundModuleIds.includes(module.id));
+        const accounts = State.accounts.filter((account) => account.demo_round_id === round.id);
+        const responsible = findResponsiblePerson(round.responsible_person_id) || findProfile(round.responsible_user_id);
         const logs = State.activityLogs
           .filter((log) => log.company_id === company.id)
           .sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
@@ -1981,15 +2170,16 @@
         row.effectiveStatus,
         displayName(row.responsible),
         row.responsible?.email,
-        ...row.modules.map((m) => m.name),
-        ...row.accounts.map((a) => a.login_email),
+        row.responsible?.phone,
+        ...row.modules.map((module) => module.name),
+        ...row.accounts.map((account) => account.login_email),
         row.latestLog?.message
       ].filter(Boolean).join(' '));
 
       if (search && !haystack.includes(search)) return false;
       if (State.filters.status && row.effectiveStatus !== State.filters.status) return false;
-      if (State.filters.responsible && row.round.responsible_user_id !== State.filters.responsible) return false;
-      if (State.filters.module && !row.modules.some((m) => m.id === State.filters.module)) return false;
+      if (State.filters.responsible && row.round.responsible_person_id !== State.filters.responsible) return false;
+      if (State.filters.module && !row.modules.some((module) => module.id === State.filters.module)) return false;
       if (State.filters.nearOnly && !(row.remainingDays >= 0 && row.remainingDays <= 7 && !FINAL_STATUSES.has(row.effectiveStatus))) return false;
       return true;
     });
@@ -2075,13 +2265,13 @@
       'จำนวนวันทั้งหมด': row.totalDays,
       'จำนวนวันคงเหลือ': Math.max(row.remainingDays, 0),
       'โมดูล': row.modules.map((m) => m.name).join(', '),
-      'Demo accounts': row.accounts.map((a) => a.login_email).join(', '),
+      'บัญชีเดโม': row.accounts.map((a) => a.login_email).join(', '),
       'จำนวนครั้งที่ต่ออายุ': row.round.renewal_no || 0,
       'วันที่ส่งอีเมลครั้งแรก': row.round.first_email_sent_at || '',
-      'วันที่ส่ง reminder': row.round.reminder_email_sent_at || '',
+      'วันที่ส่งอีเมลเตือน': row.round.reminder_email_sent_at || '',
       'วันที่สร้างรายการ': row.round.created_at || '',
       'วันที่แก้ไขล่าสุด': row.round.updated_at || '',
-      'Note ล่าสุด': row.latestLog?.message || ''
+      'บันทึกล่าสุด': row.latestLog?.message || ''
     }));
 
     const filename = `demo-crm-${all ? 'all' : 'filtered'}-${todayISO()}.xlsx`;
@@ -2116,7 +2306,7 @@
 
   function renderEmail(row, template) {
     const accounts = row.accounts.map((acc, index) => {
-      return `${index + 1}. Email: ${acc.login_email}\n   Password: ${acc.password}${acc.note ? `\n   Note: ${acc.note}` : ''}`;
+      return `${index + 1}. อีเมล: ${acc.login_email}\n   รหัสผ่าน: ${acc.password}${acc.note ? `\n   หมายเหตุ: ${acc.note}` : ''}`;
     }).join('\n\n');
 
     const vars = {
@@ -2199,6 +2389,67 @@
     };
   }
 
+  function demoDraftKey(editId = '', renewFromId = '') {
+    const userId = State.session?.user?.id || 'anonymous';
+    if (editId) return `${DEMO_DRAFT_PREFIX}${userId}:edit:${editId}`;
+    if (renewFromId) return `${DEMO_DRAFT_PREFIX}${userId}:renew:${renewFromId}`;
+    return `${DEMO_DRAFT_PREFIX}${userId}:new`;
+  }
+
+  function readDemoDraft(key) {
+    if (!key) return null;
+    try {
+      const raw = localStorage.getItem(key);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      return parsed && typeof parsed === 'object' ? parsed : null;
+    } catch {
+      return null;
+    }
+  }
+
+  function clearDemoDraft(key) {
+    if (!key) return;
+    localStorage.removeItem(key);
+  }
+
+  function saveDemoDraftFromElement(element) {
+    const form = element?.closest?.('form[data-action="demo-save"]');
+    if (!form) return;
+    saveDemoDraft(form);
+  }
+
+  function saveDemoDraft(form) {
+    const key = form.dataset.draftKey;
+    if (!key) return;
+
+    try {
+      localStorage.setItem(key, JSON.stringify(collectDemoDraft(form)));
+    } catch (error) {
+      console.warn('save draft skipped:', safeError(error));
+    }
+  }
+
+  function collectDemoDraft(form) {
+    return {
+      company_name: form.company_name?.value || '',
+      contact_name: form.contact_name?.value || '',
+      contact_emails: getChipValues(form, 'contact_emails'),
+      status: form.status?.value || STATUS.PENDING,
+      responsible_person_id: form.responsible_person_id?.value || '',
+      start_date: form.start_date?.value || todayISO(),
+      end_date: form.end_date?.value || addDaysISO(todayISO(), 14),
+      renewal_no: Number(form.renewal_no?.value || 0),
+      modules: $$('input[name="modules"]:checked', form).map((input) => input.value),
+      accounts: $$('[data-account-row]', form).map((row) => ({
+        login_email: $('[name="account_login_email"]', row)?.value.trim() || '',
+        password: $('[name="account_password"]', row)?.value || '',
+        note: $('[name="account_note"]', row)?.value.trim() || ''
+      })),
+      activity_message: form.activity_message?.value || ''
+    };
+  }
+
   function renderChipInput(name, values = [], placeholder = '') {
     const safeValues = unique((values || []).filter(Boolean));
     return `
@@ -2276,9 +2527,9 @@
     if (!text) return;
     try {
       await navigator.clipboard.writeText(text);
-      toast('copy แล้ว', 'success');
+      toast('คัดลอกแล้ว', 'success');
     } catch {
-      toast('copy ไม่สำเร็จ กรุณา copy เอง', 'warning');
+      toast('คัดลอกไม่สำเร็จ กรุณาคัดลอกเอง', 'warning');
     }
   }
 
@@ -2314,12 +2565,32 @@
   }
 
   function findProfile(id) {
-    return State.profiles.find((p) => p.id === id) || null;
+    return State.profiles.find((profile) => profile.id === id) || null;
+  }
+
+  function findResponsiblePerson(id) {
+    return State.responsiblePeople.find((person) => person.id === id) || null;
+  }
+
+  function getRoundResponsiblePersonId(round) {
+    if (!round) return '';
+    if (round.responsible_person_id) return round.responsible_person_id;
+
+    const legacyProfile = findProfile(round.responsible_user_id);
+    if (!legacyProfile?.email) return '';
+    const matched = State.responsiblePeople.find((person) => normalize(person.email) === normalize(legacyProfile.email));
+    return matched?.id || '';
   }
 
   function displayName(profile) {
     if (!profile) return '-';
-    return profile.full_name || profile.email || '-';
+    return profile.name || profile.full_name || profile.email || '-';
+  }
+
+  function roleLabel(role) {
+    if (role === 'admin') return 'ผู้ดูแล';
+    if (role === 'user') return 'ผู้ใช้';
+    return role || '-';
   }
 
   function userIsAdmin() {
@@ -2329,6 +2600,15 @@
   function canSoftDelete(row) {
     if (userIsAdmin()) return true;
     return row.round.created_by === State.profile?.id && row.effectiveStatus === STATUS.PENDING;
+  }
+
+  function canModifyLog(log, latestId = null) {
+    const companyLogs = State.activityLogs
+      .filter((item) => item.company_id === log.company_id)
+      .sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
+    const actualLatestId = latestId || companyLogs[0]?.id;
+    if (log.id !== actualLatestId) return false;
+    return userIsAdmin() || log.created_by === State.profile?.id;
   }
 
   function computeStatus(round) {
