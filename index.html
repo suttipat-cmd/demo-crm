@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Demo CRM</title>
+  <meta name="description" content="Demo CRM สำหรับทีม Customer Support">
+  <link rel="stylesheet" href="./style.css?v=1.0.0">
+</head>
+<body>
+  <noscript>กรุณาเปิด JavaScript เพื่อใช้งาน Demo CRM</noscript>
+
+  <div id="app" class="app-loading">
+    <div class="loading-card">
+      <div class="spinner" aria-hidden="true"></div>
+      <p>กำลังโหลด Demo CRM...</p>
+    </div>
+  </div>
+
+  <div id="modal-root" aria-live="polite"></div>
+  <div id="toast-root" aria-live="polite"></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script src="./script.js?v=1.0.0"></script>
+</body>
+</html>

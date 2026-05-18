@@ -1,0 +1,2183 @@
+/* Demo CRM v1.0.0
+   Static SPA for GitHub Pages + Supabase.
+   Security rule: never place service_role key, database password, or private token in this file.
+*/
+(() => {
+  'use strict';
+
+  const APP_VERSION = '1.0.0';
+  const APP_CONFIG = {
+    SUPABASE_URL: 'https://hacmassihdqlgkmwoivs.supabase.co',
+    SUPABASE_ANON_KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhhY21hc3NpaGRxbGdrbXdvaXZzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkxMjk1ODgsImV4cCI6MjA5NDcwNTU4OH0.TgkJCHaRndMDZY2SANXCjFLdMkHUd_bxJOb0K9Znpa8',
+    APPS_SCRIPT_URL: ''
+  };
+
+  const STATUS = Object.freeze({
+    PENDING: 'รอดำเนินการ',
+    ACTIVE: 'เปิดใช้งาน',
+    EXPIRED: 'หมดอายุ',
+    CLOSED: 'ปิดรายการ',
+    CUSTOMER: 'เป็นลูกค้าแล้ว'
+  });
+
+  const FINAL_STATUSES = new Set([STATUS.CLOSED, STATUS.CUSTOMER]);
+  const LOG_TYPES = [
+    'หมายเหตุทั่วไป',
+    'โทรติดต่อลูกค้า',
+    'ส่งอีเมล',
+    'ลูกค้าตอบกลับ',
+    'ต่ออายุ demo',
+    'เปลี่ยนสถานะ',
+    'ปัญหาการใช้งาน',
+    'เป็นลูกค้าแล้ว'
+  ];
+
+  const State = {
+    sb: null,
+    session: null,
+    profile: null,
+    currentRoute: '#dashboard',
+    loading: false,
+    dataLoaded: false,
+    profiles: [],
+    companies: [],
+    rounds: [],
+    accounts: [],
+    modules: [],
+    roundModules: [],
+    activityLogs: [],
+    emailLogs: [],
+    emailTemplates: [],
+    settings: {},
+    filters: {
+      search: '',
+      status: '',
+      responsible: '',
+      module: '',
+      sort: 'updated_desc',
+      nearOnly: false
+    },
+    dashboardRange: defaultMonthRange(),
+    adminTab: 'users'
+  };
+
+  const $ = (selector, root = document) => root.querySelector(selector);
+  const $$ = (selector, root = document) => Array.from(root.querySelectorAll(selector));
+
+  document.addEventListener('DOMContentLoaded', boot);
+  window.addEventListener('hashchange', () => {
+    State.currentRoute = location.hash || '#dashboard';
+    render();
+  });
+
+  function boot() {
+    setupGlobalEvents();
+
+    if (!window.supabase || typeof window.supabase.createClient !== 'function') {
+      renderFatal('โหลด Supabase client ไม่สำเร็จ กรุณาตรวจสอบ internet/CDN หรือเปิดใหม่อีกครั้ง');
+      return;
+    }
+
+    State.sb = window.supabase.createClient(APP_CONFIG.SUPABASE_URL, APP_CONFIG.SUPABASE_ANON_KEY);
+
+    State.sb.auth.onAuthStateChange(async (_event, session) => {
+      State.session = session;
+      State.dataLoaded = false;
+      if (session) {
+        await loadProfile();
+        await loadAllData();
+      }
+      render();
+    });
+
+    initSession();
+  }
+
+  async function initSession() {
+    try {
+      const { data, error } = await State.sb.auth.getSession();
+      if (error) throw error;
+      State.session = data.session;
+      if (State.session) {
+        await loadProfile();
+        await loadAllData();
+      }
+      State.currentRoute = location.hash || '#dashboard';
+      render();
+    } catch (error) {
+      renderFatal(`เริ่มระบบไม่สำเร็จ: ${safeError(error)}`);
+    }
+  }
+
+  function setupGlobalEvents() {
+    document.addEventListener('submit', handleSubmit);
+    document.addEventListener('click', handleClick);
+    document.addEventListener('change', handleChange);
+    document.addEventListener('input', handleInput);
+    document.addEventListener('keydown', handleKeyDown);
+  }
+
+  async function handleSubmit(event) {
+    const form = event.target;
+    if (!form.matches('form[data-action]')) return;
+    event.preventDefault();
+
+    const action = form.dataset.action;
+    const submitter = event.submitter || form.querySelector('[type="submit"]');
+
+    await withButtonLoading(submitter, async () => {
+      switch (action) {
+        case 'login':
+          await login(form);
+          break;
+        case 'demo-save':
+          await saveDemoForm(form);
+          break;
+        case 'activity-add':
+          await addActivityLog(form);
+          break;
+        case 'admin-module-save':
+          await saveModule(form);
+          break;
+        case 'admin-template-save':
+          await saveEmailTemplate(form);
+          break;
+        case 'admin-setting-save':
+          await saveSettings(form);
+          break;
+        case 'admin-profile-save':
+          await saveProfileAdmin(form);
+          break;
+        default:
+          toast('ไม่รู้จัก action นี้', 'error');
+      }
+    });
+  }
+
+  async function handleClick(event) {
+    const target = event.target.closest('[data-action]');
+    if (!target) return;
+
+    const action = target.dataset.action;
+    if (target.tagName !== 'FORM') event.preventDefault();
+
+    switch (action) {
+      case 'logout':
+        await State.sb.auth.signOut();
+        break;
+      case 'reload':
+        await loadAllData(true);
+        render();
+        break;
+      case 'modal-close':
+        closeModal();
+        break;
+      case 'account-add':
+        addAccountRow();
+        break;
+      case 'account-remove':
+        target.closest('[data-account-row]')?.remove();
+        break;
+      case 'password-toggle':
+        togglePassword(target);
+        break;
+      case 'copy':
+        await copyText(target.dataset.copy || '');
+        break;
+      case 'demo-delete':
+        await softDeleteDemo(target.dataset.id);
+        break;
+      case 'email-preview':
+        openEmailPreview(target.dataset.id, target.dataset.type || 'first_demo_email');
+        break;
+      case 'email-send':
+        await sendPreviewEmail(target.dataset.id, target.dataset.type || 'first_demo_email');
+        break;
+      case 'log-edit':
+        await editLog(target.dataset.id);
+        break;
+      case 'log-delete':
+        await deleteLog(target.dataset.id);
+        break;
+      case 'export-current':
+        exportDemoRows(false);
+        break;
+      case 'export-all':
+        exportDemoRows(true);
+        break;
+      case 'admin-tab':
+        State.adminTab = target.dataset.tab || 'users';
+        render();
+        break;
+      case 'admin-module-toggle':
+        await toggleModule(target.dataset.id, target.dataset.active === 'true');
+        break;
+      case 'admin-template-reset':
+        await resetTemplate(target.dataset.key);
+        break;
+      case 'run-reminder-check':
+        await queueReminderEmails();
+        break;
+      case 'print':
+        window.print();
+        break;
+      case 'chip-remove':
+        removeChip(target);
+        break;
+      default:
+        break;
+    }
+  }
+
+  function handleChange(event) {
+    const target = event.target;
+
+    if (target.matches('[data-filter]')) {
+      const key = target.dataset.filter;
+      if (key === 'nearOnly') {
+        State.filters[key] = target.checked;
+      } else {
+        State.filters[key] = target.value;
+      }
+      render();
+      return;
+    }
+
+    if (target.matches('[data-dashboard-range]')) {
+      State.dashboardRange[target.dataset.dashboardRange] = target.value;
+      render();
+      return;
+    }
+
+    if (target.matches('[data-final-status-date]')) {
+      const form = target.closest('form');
+      if (form && FINAL_STATUSES.has(target.value)) {
+        const endDate = form.querySelector('[name="end_date"]');
+        if (endDate) endDate.value = todayISO();
+      }
+    }
+  }
+
+  function handleInput(event) {
+    const target = event.target;
+    if (target.matches('[data-filter="search"]')) {
+      State.filters.search = target.value;
+      render();
+    }
+  }
+
+  function handleKeyDown(event) {
+    const input = event.target.closest('[data-chip-input]');
+    if (!input) return;
+
+    if (event.key === 'Enter' || event.key === ',') {
+      event.preventDefault();
+      addChipFromInput(input);
+    }
+
+    if (event.key === 'Backspace' && !input.value.trim()) {
+      const wrapper = input.closest('[data-chip-name]');
+      const chips = $$('.chip', wrapper);
+      chips[chips.length - 1]?.querySelector('[data-action="chip-remove"]')?.click();
+    }
+  }
+
+  async function withButtonLoading(button, fn) {
+    if (!button) return fn();
+    if (button.disabled) return undefined;
+
+    const original = button.innerHTML;
+    button.disabled = true;
+    button.innerHTML = 'กำลังดำเนินการ...';
+    try {
+      return await fn();
+    } finally {
+      button.disabled = false;
+      button.innerHTML = original;
+    }
+  }
+
+  function needsConfig() {
+    return APP_CONFIG.SUPABASE_URL.includes('YOUR_PROJECT_ID') || APP_CONFIG.SUPABASE_ANON_KEY.includes('YOUR_SUPABASE_ANON');
+  }
+
+  async function login(form) {
+    if (needsConfig()) {
+      toast('กรุณาตั้งค่า SUPABASE_URL และ SUPABASE_ANON_KEY ใน script.js ก่อน', 'error');
+      return;
+    }
+
+    const email = form.email.value.trim();
+    const password = form.password.value;
+    if (!email || !password) {
+      toast('กรุณากรอก email และ password', 'warning');
+      return;
+    }
+
+    const { error } = await State.sb.auth.signInWithPassword({ email, password });
+    if (error) throw error;
+    toast('เข้าสู่ระบบสำเร็จ', 'success');
+    location.hash = '#dashboard';
+  }
+
+  async function loadProfile() {
+    if (!State.session?.user) {
+      State.profile = null;
+      return;
+    }
+
+    const user = State.session.user;
+    const { data, error } = await State.sb
+      .from('profiles')
+      .select('*')
+      .eq('id', user.id)
+      .maybeSingle();
+
+    if (error) throw error;
+
+    if (!data) {
+      const fallback = {
+        id: user.id,
+        email: user.email || '',
+        full_name: user.email || 'User',
+        role: 'user',
+        is_active: true
+      };
+      const { error: insertError } = await State.sb.from('profiles').insert(fallback);
+      if (insertError) throw insertError;
+      State.profile = fallback;
+    } else {
+      State.profile = data;
+    }
+
+    if (!State.profile.is_active) {
+      await State.sb.auth.signOut();
+      throw new Error('บัญชีนี้ถูกปิดใช้งาน กรุณาติดต่อ admin');
+    }
+  }
+
+  async function loadAllData(showToast = false) {
+    if (!State.session) return;
+
+    State.loading = true;
+    try {
+      await State.sb.rpc('sync_demo_statuses');
+
+      const [
+        profiles,
+        companies,
+        rounds,
+        accounts,
+        modules,
+        roundModules,
+        activityLogs,
+        emailLogs,
+        emailTemplates,
+        settings
+      ] = await Promise.all([
+        State.sb.from('profiles').select('*').order('full_name'),
+        State.sb.from('companies').select('*').is('deleted_at', null).order('updated_at', { ascending: false }),
+        State.sb.from('demo_rounds').select('*').is('deleted_at', null).order('updated_at', { ascending: false }),
+        State.sb.from('demo_accounts').select('*').order('created_at', { ascending: true }),
+        State.sb.from('modules').select('*').order('name'),
+        State.sb.from('demo_round_modules').select('*'),
+        State.sb.from('activity_logs').select('*').is('deleted_at', null).order('created_at', { ascending: false }),
+        State.sb.from('email_logs').select('*').order('created_at', { ascending: false }).limit(250),
+        State.sb.from('email_templates').select('*').eq('is_active', true).order('template_key'),
+        State.sb.from('settings').select('*')
+      ]);
+
+      const responses = [profiles, companies, rounds, accounts, modules, roundModules, activityLogs, emailLogs, emailTemplates, settings];
+      const firstError = responses.find((res) => res.error)?.error;
+      if (firstError) throw firstError;
+
+      State.profiles = profiles.data || [];
+      State.companies = companies.data || [];
+      State.rounds = rounds.data || [];
+      State.accounts = accounts.data || [];
+      State.modules = modules.data || [];
+      State.roundModules = roundModules.data || [];
+      State.activityLogs = activityLogs.data || [];
+      State.emailLogs = emailLogs.data || [];
+      State.emailTemplates = emailTemplates.data || [];
+      State.settings = Object.fromEntries((settings.data || []).map((row) => [row.key, row.value]));
+
+      State.dataLoaded = true;
+      if (showToast) toast('โหลดข้อมูลล่าสุดแล้ว', 'success');
+    } catch (error) {
+      toast(`โหลดข้อมูลไม่สำเร็จ: ${safeError(error)}`, 'error');
+    } finally {
+      State.loading = false;
+    }
+  }
+
+  function render() {
+    const app = $('#app');
+    if (!app) return;
+
+    if (!State.session) {
+      app.className = '';
+      app.innerHTML = renderLogin();
+      return;
+    }
+
+    const route = State.currentRoute || '#dashboard';
+    app.className = '';
+    app.innerHTML = renderShell(route);
+  }
+
+  function renderFatal(message) {
+    const app = $('#app');
+    app.className = 'app-loading';
+    app.innerHTML = `
+      <div class="loading-card">
+        <h1>เปิดระบบไม่ได้</h1>
+        <p>${escapeHTML(message)}</p>
+      </div>
+    `;
+  }
+
+  function renderLogin() {
+    return `
+      <main class="auth-page">
+        <section class="auth-card">
+          <div class="brand">
+            <div class="brand-mark">D</div>
+            <div>
+              <h1>Demo CRM</h1>
+              <p>ระบบจัดการ Demo สำหรับทีม Customer Support</p>
+            </div>
+          </div>
+          ${needsConfig() ? `
+            <div class="config-warning">
+              ยังไม่ได้ตั้งค่า Supabase ใน <strong>script.js</strong><br>
+              แก้ค่า SUPABASE_URL และ SUPABASE_ANON_KEY ก่อนใช้งานจริง
+            </div>
+          ` : ''}
+          <form data-action="login" class="grid">
+            <div class="field">
+              <label for="login-email">Email</label>
+              <input id="login-email" class="input" type="email" name="email" autocomplete="email" required>
+            </div>
+            <div class="field">
+              <label for="login-password">Password</label>
+              <input id="login-password" class="input" type="password" name="password" autocomplete="current-password" required>
+            </div>
+            <button class="btn primary" type="submit">เข้าสู่ระบบ</button>
+          </form>
+          <p class="muted small-text">ไม่มีปุ่มสมัครสมาชิก ผู้ใช้ต้องถูกสร้างโดย admin/Supabase Auth ก่อน</p>
+        </section>
+      </main>
+    `;
+  }
+
+  function renderShell(route) {
+    const profileName = displayName(State.profile);
+    const isAdmin = userIsAdmin();
+
+    return `
+      <div class="shell">
+        <aside class="sidebar">
+          <div class="brand">
+            <div class="brand-mark">D</div>
+            <div>
+              <h2>Demo CRM</h2>
+              <p>v${APP_VERSION}</p>
+            </div>
+          </div>
+          <nav class="nav">
+            ${navLink('#dashboard', 'Dashboard', route)}
+            ${navLink('#demos', 'Demo List', route)}
+            ${navLink('#demos/new', 'Create Demo', route)}
+            ${isAdmin ? navLink('#admin', 'Admin', route) : ''}
+          </nav>
+          <div class="sidebar-footer">
+            <div>
+              <strong>${escapeHTML(profileName)}</strong><br>
+              ${escapeHTML(State.profile?.email || '')}<br>
+              Role: ${escapeHTML(State.profile?.role || '')}
+            </div>
+            <button class="btn ghost" data-action="logout">ออกจากระบบ</button>
+          </div>
+        </aside>
+        <main class="main">
+          ${State.loading ? '<div class="config-warning">กำลังโหลดข้อมูล...</div>' : ''}
+          ${renderRoute(route)}
+        </main>
+      </div>
+    `;
+  }
+
+  function navLink(hash, label, route) {
+    const active = route === hash || (hash === '#demos' && route.startsWith('#demos/') && route !== '#demos/new');
+    return `<a href="${hash}" class="${active ? 'active' : ''}">${escapeHTML(label)}</a>`;
+  }
+
+  function renderRoute(route) {
+    if (!State.dataLoaded) {
+      return `
+        <section class="loading-card">
+          <div class="spinner"></div>
+          <p>กำลังโหลดข้อมูล...</p>
+        </section>
+      `;
+    }
+
+    if (route === '#dashboard' || route === '') return renderDashboard();
+    if (route === '#demos') return renderDemoList();
+    if (route === '#demos/new') return renderDemoForm();
+    if (route.startsWith('#demos/new/renew/')) return renderDemoForm({ renewFromId: route.replace('#demos/new/renew/', '') });
+    if (route.startsWith('#demos/edit/')) return renderDemoForm({ editId: route.replace('#demos/edit/', '') });
+    if (route.startsWith('#demos/')) return renderDemoDetail(route.replace('#demos/', ''));
+    if (route === '#admin') return userIsAdmin() ? renderAdmin() : renderForbidden();
+    return renderNotFound();
+  }
+
+  function renderTopbar(title, subtitle, actions = '') {
+    return `
+      <div class="topbar">
+        <div class="page-title">
+          <h1>${escapeHTML(title)}</h1>
+          <p>${escapeHTML(subtitle || '')}</p>
+        </div>
+        <div class="actions">
+          ${actions}
+          <button class="btn ghost" data-action="reload">รีเฟรช</button>
+        </div>
+      </div>
+    `;
+  }
+
+  function renderDashboard() {
+    const start = State.dashboardRange.start;
+    const end = State.dashboardRange.end;
+    const rows = getDemoRows().filter((row) => dateInRange(row.round.created_at?.slice(0, 10), start, end));
+    const allRows = getDemoRows();
+
+    const counts = countByStatus(rows);
+    const near7 = allRows
+      .filter((row) => !FINAL_STATUSES.has(row.effectiveStatus) && row.remainingDays >= 0 && row.remainingDays <= 7)
+      .sort((a, b) => a.remainingDays - b.remainingDays);
+
+    const expired = allRows
+      .filter((row) => row.effectiveStatus === STATUS.EXPIRED)
+      .sort((a, b) => a.remainingDays - b.remainingDays);
+
+    const latest = [...allRows]
+      .sort((a, b) => new Date(b.round.created_at || 0) - new Date(a.round.created_at || 0))
+      .slice(0, 8);
+
+    const customers = allRows
+      .filter((row) => row.effectiveStatus === STATUS.CUSTOMER)
+      .sort((a, b) => new Date(b.round.updated_at || 0) - new Date(a.round.updated_at || 0))
+      .slice(0, 8);
+
+    return `
+      ${renderTopbar('Dashboard', 'ภาพรวม Demo ทั้งทีม', `
+        <a class="btn primary" href="#demos/new">+ สร้าง Demo</a>
+      `)}
+      <section class="card">
+        <div class="filters">
+          <div class="field">
+            <label>เริ่ม</label>
+            <input class="input" type="date" data-dashboard-range="start" value="${escapeAttr(start)}">
+          </div>
+          <div class="field">
+            <label>สิ้นสุด</label>
+            <input class="input" type="date" data-dashboard-range="end" value="${escapeAttr(end)}">
+          </div>
+          ${userIsAdmin() ? '<button class="btn warning" data-action="run-reminder-check">Queue reminder 3 วัน</button>' : ''}
+        </div>
+        <div class="stats-grid">
+          ${statCard('Demo ในช่วงที่เลือก', rows.length, 'นับจากวันที่สร้าง')}
+          ${statCard(STATUS.PENDING, counts[STATUS.PENDING] || 0)}
+          ${statCard(STATUS.ACTIVE, counts[STATUS.ACTIVE] || 0)}
+          ${statCard('ใกล้หมดอายุ 7 วัน', near7.length, 'Dashboard เท่านั้น')}
+          ${statCard(STATUS.EXPIRED, counts[STATUS.EXPIRED] || 0)}
+          ${statCard(STATUS.CLOSED, counts[STATUS.CLOSED] || 0)}
+          ${statCard(STATUS.CUSTOMER, counts[STATUS.CUSTOMER] || 0)}
+        </div>
+      </section>
+
+      <section class="grid two" style="margin-top:16px">
+        <div class="card">
+          <div class="section-title"><h2>Demo แยกตามสถานะ</h2></div>
+          ${barChart(counts)}
+        </div>
+        <div class="card">
+          <div class="section-title"><h2>Demo แยกตามโมดูล</h2></div>
+          ${barChart(countByModule(rows))}
+        </div>
+      </section>
+
+      <section class="grid two" style="margin-top:16px">
+        ${miniTable('ใกล้หมดอายุภายใน 7 วัน', near7.slice(0, 10), true)}
+        ${miniTable('หมดอายุแต่ยังไม่ปิดรายการ', expired.slice(0, 10), true)}
+        ${miniTable('รายการล่าสุดที่สร้าง', latest, false)}
+        ${miniTable('เป็นลูกค้าแล้วล่าสุด', customers, false)}
+      </section>
+    `;
+  }
+
+  function statCard(label, value, hint = '') {
+    return `
+      <div class="card stat">
+        <div class="label">${escapeHTML(label)}</div>
+        <div class="value">${Number(value || 0).toLocaleString('th-TH')}</div>
+        <div class="hint">${escapeHTML(hint)}</div>
+      </div>
+    `;
+  }
+
+  function miniTable(title, rows, showDays) {
+    return `
+      <div class="card">
+        <div class="section-title"><h2>${escapeHTML(title)}</h2></div>
+        ${rows.length ? `
+          <div class="table-wrap" style="margin-top:12px">
+            <table>
+              <thead>
+                <tr>
+                  <th>บริษัท</th>
+                  <th>สถานะ</th>
+                  <th>${showDays ? 'วันคงเหลือ' : 'ผู้รับผิดชอบ'}</th>
+                  <th>โน๊ตล่าสุด</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${rows.map((row) => `
+                  <tr>
+                    <td><a href="#demos/${row.round.id}"><strong>${escapeHTML(row.company.company_name)}</strong></a></td>
+                    <td>${statusBadge(row.effectiveStatus)}</td>
+                    <td>${showDays ? formatRemaining(row.remainingDays) : escapeHTML(displayName(row.responsible))}</td>
+                    <td>${escapeHTML(row.latestLog?.message || '-')}</td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>
+        ` : '<div class="empty">ไม่มีข้อมูล</div>'}
+      </div>
+    `;
+  }
+
+  function renderDemoList() {
+    const rows = getFilteredRows();
+
+    return `
+      ${renderTopbar('Demo List', 'ค้นหา กรอง จัดเรียง และ export รายการ demo', `
+        <a class="btn primary" href="#demos/new">+ สร้าง Demo</a>
+        <button class="btn secondary" data-action="export-current">Export ผลลัพธ์</button>
+        <button class="btn ghost" data-action="export-all">Export ทั้งหมด</button>
+      `)}
+      <section class="card">
+        <div class="filters">
+          <div class="field" style="min-width:260px; flex:1">
+            <label>ค้นหา</label>
+            <input class="input" data-filter="search" value="${escapeAttr(State.filters.search)}" placeholder="บริษัท, ผู้ติดต่อ, อีเมล, โมดูล, ผู้รับผิดชอบ">
+          </div>
+          <div class="field">
+            <label>สถานะ</label>
+            <select class="select" data-filter="status">
+              ${option('', 'ทุกสถานะ', State.filters.status)}
+              ${Object.values(STATUS).map((s) => option(s, s, State.filters.status)).join('')}
+            </select>
+          </div>
+          <div class="field">
+            <label>ผู้รับผิดชอบ</label>
+            <select class="select" data-filter="responsible">
+              ${option('', 'ทุกคน', State.filters.responsible)}
+              ${State.profiles.map((p) => option(p.id, displayName(p), State.filters.responsible)).join('')}
+            </select>
+          </div>
+          <div class="field">
+            <label>โมดูล</label>
+            <select class="select" data-filter="module">
+              ${option('', 'ทุกโมดูล', State.filters.module)}
+              ${State.modules.map((m) => option(m.id, m.name, State.filters.module)).join('')}
+            </select>
+          </div>
+          <div class="field">
+            <label>Sort</label>
+            <select class="select" data-filter="sort">
+              ${option('updated_desc', 'แก้ไขล่าสุด', State.filters.sort)}
+              ${option('created_desc', 'สร้างล่าสุด', State.filters.sort)}
+              ${option('start_asc', 'วันที่เริ่ม', State.filters.sort)}
+              ${option('end_asc', 'วันที่สิ้นสุด', State.filters.sort)}
+              ${option('remaining_asc', 'วันคงเหลือ', State.filters.sort)}
+              ${option('company_asc', 'ชื่อบริษัท', State.filters.sort)}
+              ${option('status_asc', 'สถานะ', State.filters.sort)}
+            </select>
+          </div>
+          <label class="check-card">
+            <input type="checkbox" data-filter="nearOnly" ${State.filters.nearOnly ? 'checked' : ''}>
+            ใกล้หมดอายุ 7 วัน
+          </label>
+        </div>
+        ${renderDemoTable(rows)}
+      </section>
+    `;
+  }
+
+  function renderDemoTable(rows) {
+    if (!rows.length) return '<div class="empty">ไม่พบรายการ Demo</div>';
+
+    return `
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>ชื่อบริษัท</th>
+              <th>ผู้ติดต่อ</th>
+              <th>อีเมลผู้ติดต่อ</th>
+              <th>สถานะ</th>
+              <th>ผู้รับผิดชอบ</th>
+              <th>เริ่ม</th>
+              <th>สิ้นสุด</th>
+              <th>วันทั้งหมด</th>
+              <th>วันคงเหลือ</th>
+              <th>โมดูล</th>
+              <th>โน๊ตล่าสุด</th>
+              <th>แก้ไขล่าสุด</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rows.map((row) => {
+              const canDelete = canSoftDelete(row);
+              return `
+                <tr>
+                  <td><a href="#demos/${row.round.id}"><strong>${escapeHTML(row.company.company_name)}</strong></a></td>
+                  <td>${escapeHTML(row.company.contact_name || '-')}</td>
+                  <td>${escapeHTML((row.company.contact_emails || []).join(', '))}</td>
+                  <td>${statusBadge(row.effectiveStatus)}</td>
+                  <td>${escapeHTML(displayName(row.responsible))}</td>
+                  <td>${formatDate(row.round.start_date)}</td>
+                  <td>${formatDate(row.round.end_date)}</td>
+                  <td>${row.totalDays}</td>
+                  <td>${formatRemaining(row.remainingDays)}</td>
+                  <td>${escapeHTML(row.modules.map((m) => m.name).join(', ') || '-')}</td>
+                  <td>${escapeHTML(row.latestLog?.message || '-')}</td>
+                  <td>${formatDateTime(row.round.updated_at)}</td>
+                  <td>
+                    <div class="actions">
+                      <a class="btn small ghost" href="#demos/${row.round.id}">ดู</a>
+                      <a class="btn small secondary" href="#demos/edit/${row.round.id}">แก้ไข</a>
+                      <a class="btn small success" href="#demos/new/renew/${row.round.id}">ต่ออายุ</a>
+                      <button class="btn small ghost" data-action="email-preview" data-id="${row.round.id}">อีเมล</button>
+                      ${canDelete ? `<button class="btn small danger" data-action="demo-delete" data-id="${row.round.id}">ลบ</button>` : ''}
+                    </div>
+                  </td>
+                </tr>
+              `;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>
+    `;
+  }
+
+  function renderDemoForm({ editId = null, renewFromId = null } = {}) {
+    const editRow = editId ? getDemoRow(editId) : null;
+    const renewRow = renewFromId ? getDemoRow(renewFromId) : null;
+
+    if (editId && !editRow) return renderNotFound();
+    if (renewFromId && !renewRow) return renderNotFound();
+
+    const source = editRow || renewRow;
+    const company = source?.company || {};
+    const round = source?.round || {};
+    const title = editRow ? 'แก้ไข Demo' : renewRow ? 'ต่ออายุ Demo' : 'สร้าง Demo';
+    const subtitle = editRow
+      ? `แก้ไขข้อมูลของ ${company.company_name}`
+      : renewRow
+        ? `copy ข้อมูลจากรอบเดิมของ ${company.company_name}`
+        : 'เพิ่มบริษัทและ demo round ใหม่';
+
+    const selectedModuleIds = source?.modules.map((m) => m.id) || [];
+    const accounts = source?.accounts.length ? source.accounts : [{ login_email: '', password: '', note: '' }];
+
+    const startDate = editRow ? round.start_date : todayISO();
+    const endDate = editRow ? round.end_date : addDaysISO(todayISO(), 14);
+    const renewalNo = editRow ? (round.renewal_no || 0) : renewRow ? (round.renewal_no || 0) + 1 : 0;
+
+    return `
+      ${renderTopbar(title, subtitle, `
+        <a class="btn ghost" href="#demos">กลับรายการ</a>
+      `)}
+      <form data-action="demo-save" data-edit-id="${escapeAttr(editId || '')}" data-renew-from-id="${escapeAttr(renewFromId || '')}" class="grid">
+        <section class="panel form-section">
+          <div class="section-title"><h2>ข้อมูลบริษัท</h2></div>
+          <div class="grid two">
+            <div class="field">
+              <label>ชื่อบริษัท *</label>
+              <input class="input" name="company_name" list="company-list" value="${escapeAttr(company.company_name || '')}" required>
+              <datalist id="company-list">
+                ${State.companies.map((c) => `<option value="${escapeAttr(c.company_name)}"></option>`).join('')}
+              </datalist>
+            </div>
+            <div class="field">
+              <label>ชื่อผู้ติดต่อ *</label>
+              <input class="input" name="contact_name" value="${escapeAttr(company.contact_name || '')}" required>
+            </div>
+          </div>
+          <div class="field">
+            <label>อีเมลผู้ติดต่อ *</label>
+            ${renderChipInput('contact_emails', company.contact_emails || [], 'พิมพ์อีเมลแล้วกด Enter')}
+          </div>
+        </section>
+
+        <section class="panel form-section">
+          <div class="section-title"><h2>ข้อมูล Demo</h2></div>
+          <div class="grid four">
+            <div class="field">
+              <label>สถานะ *</label>
+              <select class="select" name="status" data-final-status-date required>
+                ${Object.values(STATUS).map((s) => option(s, s, round.status || STATUS.PENDING)).join('')}
+              </select>
+            </div>
+            <div class="field">
+              <label>ผู้รับผิดชอบ *</label>
+              <select class="select" name="responsible_user_id" required>
+                ${State.profiles.filter((p) => p.is_active).map((p) => option(p.id, `${displayName(p)} (${p.email})`, round.responsible_user_id || State.profile?.id)).join('')}
+              </select>
+            </div>
+            <div class="field">
+              <label>วันที่เริ่ม *</label>
+              <input class="input" type="date" name="start_date" value="${escapeAttr(startDate)}" required>
+            </div>
+            <div class="field">
+              <label>วันที่สิ้นสุด *</label>
+              <input class="input" type="date" name="end_date" value="${escapeAttr(endDate)}" required>
+            </div>
+          </div>
+          <input type="hidden" name="renewal_no" value="${escapeAttr(String(renewalNo))}">
+          <div class="field">
+            <label>โมดูล *</label>
+            <div class="module-grid">
+              ${State.modules.filter((m) => m.is_active || selectedModuleIds.includes(m.id)).map((m) => `
+                <label class="check-card">
+                  <input type="checkbox" name="modules" value="${m.id}" ${selectedModuleIds.includes(m.id) ? 'checked' : ''}>
+                  ${escapeHTML(m.name)} ${m.is_active ? '' : '<span class="badge pending">inactive</span>'}
+                </label>
+              `).join('')}
+            </div>
+          </div>
+        </section>
+
+        <section class="panel form-section">
+          <div class="section-title">
+            <h2>Demo Accounts</h2>
+            <button class="btn small secondary" data-action="account-add" type="button">+ เพิ่ม account</button>
+          </div>
+          <div id="accounts-list" class="grid">
+            ${accounts.map((acc) => renderAccountRow(acc)).join('')}
+          </div>
+        </section>
+
+        <section class="panel form-section">
+          <div class="section-title"><h2>บันทึกความคืบหน้า</h2></div>
+          <div class="field">
+            <label>Note / Activity Log</label>
+            <textarea class="textarea" name="activity_message" placeholder="เช่น โทรคุยแล้ว ลูกค้าขอทดลองเพิ่มอีก 7 วัน"></textarea>
+          </div>
+          <div class="field">
+            <label>ประเภท log</label>
+            <select class="select" name="log_type">
+              ${LOG_TYPES.map((t) => option(t, t, renewRow ? 'ต่ออายุ demo' : 'หมายเหตุทั่วไป')).join('')}
+            </select>
+          </div>
+        </section>
+
+        <div class="actions">
+          <button class="btn primary" type="submit">บันทึก</button>
+          <a class="btn ghost" href="${editRow ? `#demos/${editId}` : '#demos'}">ยกเลิก</a>
+        </div>
+      </form>
+    `;
+  }
+
+  function renderAccountRow(acc = {}) {
+    return `
+      <div class="account-row" data-account-row>
+        <div class="field">
+          <label>อีเมลผู้ใช้งาน *</label>
+          <input class="input" type="email" name="account_login_email" value="${escapeAttr(acc.login_email || '')}" required>
+        </div>
+        <div class="field">
+          <label>รหัสผ่าน *</label>
+          <input class="input" type="password" name="account_password" value="${escapeAttr(acc.password || '')}" required>
+        </div>
+        <div class="field">
+          <label>โน๊ต account</label>
+          <input class="input" name="account_note" value="${escapeAttr(acc.note || '')}">
+        </div>
+        <button class="btn danger" type="button" data-action="account-remove">ลบ</button>
+      </div>
+    `;
+  }
+
+  function renderDemoDetail(roundId) {
+    const row = getDemoRow(roundId);
+    if (!row) return renderNotFound();
+
+    const companyLogs = State.activityLogs
+      .filter((log) => log.company_id === row.company.id)
+      .sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
+
+    const history = getDemoRows()
+      .filter((item) => item.company.id === row.company.id)
+      .sort((a, b) => new Date(b.round.created_at || 0) - new Date(a.round.created_at || 0));
+
+    return `
+      ${renderTopbar(row.company.company_name, `รายละเอียดบริษัทและ demo timeline`, `
+        <a class="btn ghost" href="#demos">กลับรายการ</a>
+        <a class="btn secondary" href="#demos/edit/${row.round.id}">แก้ไข</a>
+        <a class="btn success" href="#demos/new/renew/${row.round.id}">ต่ออายุ</a>
+        <button class="btn primary" data-action="email-preview" data-id="${row.round.id}">Preview Email</button>
+        <button class="btn ghost" data-action="print">พิมพ์</button>
+      `)}
+      <section class="grid two">
+        <div class="card">
+          <div class="section-title"><h2>ข้อมูลบริษัท</h2></div>
+          <dl class="kv" style="margin-top:14px">
+            <dt>บริษัท</dt><dd>${escapeHTML(row.company.company_name)}</dd>
+            <dt>ผู้ติดต่อ</dt><dd>${escapeHTML(row.company.contact_name)}</dd>
+            <dt>อีเมลผู้ติดต่อ</dt><dd>${escapeHTML((row.company.contact_emails || []).join(', '))}</dd>
+            <dt>โน๊ตล่าสุด</dt><dd>${escapeHTML(row.latestLog?.message || '-')}</dd>
+          </dl>
+        </div>
+        <div class="card">
+          <div class="section-title"><h2>Demo Round ปัจจุบัน</h2></div>
+          <dl class="kv" style="margin-top:14px">
+            <dt>สถานะ</dt><dd>${statusBadge(row.effectiveStatus)}</dd>
+            <dt>ผู้รับผิดชอบ</dt><dd>${escapeHTML(displayName(row.responsible))}</dd>
+            <dt>วันที่เริ่ม</dt><dd>${formatDate(row.round.start_date)}</dd>
+            <dt>วันที่สิ้นสุด</dt><dd>${formatDate(row.round.end_date)}</dd>
+            <dt>วันทั้งหมด</dt><dd>${row.totalDays}</dd>
+            <dt>วันคงเหลือ</dt><dd>${formatRemaining(row.remainingDays)}</dd>
+            <dt>โมดูล</dt><dd>${escapeHTML(row.modules.map((m) => m.name).join(', ') || '-')}</dd>
+            <dt>ครั้งที่ต่ออายุ</dt><dd>${row.round.renewal_no || 0}</dd>
+          </dl>
+        </div>
+      </section>
+
+      <section class="grid two" style="margin-top:16px">
+        <div class="card">
+          <div class="section-title"><h2>Demo Accounts</h2></div>
+          ${renderAccounts(row.accounts)}
+        </div>
+        <div class="card">
+          <div class="section-title"><h2>ประวัติ Demo Rounds</h2></div>
+          ${history.length ? `
+            <div class="timeline" style="margin-top:12px">
+              ${history.map((item) => `
+                <div class="timeline-item">
+                  <div class="timeline-date">${formatDate(item.round.created_at)}</div>
+                  <div class="timeline-body">
+                    <strong>${statusBadge(item.effectiveStatus)} รอบต่ออายุ ${item.round.renewal_no || 0}</strong>
+                    <p>${formatDate(item.round.start_date)} - ${formatDate(item.round.end_date)} · ${item.modules.map((m) => escapeHTML(m.name)).join(', ')}</p>
+                    <a class="btn small ghost" href="#demos/${item.round.id}">ดูรอบนี้</a>
+                  </div>
+                </div>
+              `).join('')}
+            </div>
+          ` : '<div class="empty">ไม่มีประวัติ</div>'}
+        </div>
+      </section>
+
+      <section class="card" style="margin-top:16px">
+        <div class="section-title"><h2>Activity Timeline ของบริษัท</h2></div>
+        <form data-action="activity-add" data-company-id="${row.company.id}" data-round-id="${row.round.id}" class="grid two" style="margin-top:14px">
+          <div class="field">
+            <label>ประเภท</label>
+            <select class="select" name="log_type">
+              ${LOG_TYPES.map((t) => option(t, t, 'หมายเหตุทั่วไป')).join('')}
+            </select>
+          </div>
+          <div class="field">
+            <label>รายละเอียด</label>
+            <input class="input" name="message" placeholder="บันทึกความคืบหน้าของบริษัทนี้" required>
+          </div>
+          <button class="btn primary" type="submit">เพิ่ม Log</button>
+        </form>
+        ${renderTimeline(companyLogs)}
+      </section>
+    `;
+  }
+
+  function renderAccounts(accounts) {
+    if (!accounts.length) return '<div class="empty">ไม่มี demo account</div>';
+
+    return `
+      <div class="grid" style="margin-top:12px">
+        ${accounts.map((account) => `
+          <div class="card">
+            <strong>${escapeHTML(account.login_email)}</strong>
+            <div class="actions" style="margin-top:8px">
+              <span class="password-mask" data-password="${escapeAttr(account.password)}">••••••••</span>
+              <button class="btn small ghost" data-action="password-toggle">ดู/ซ่อน</button>
+              <button class="btn small ghost" data-action="copy" data-copy="${escapeAttr(account.login_email)}">copy email</button>
+              <button class="btn small ghost" data-action="copy" data-copy="${escapeAttr(account.password)}">copy password</button>
+            </div>
+            ${account.note ? `<p class="muted">${escapeHTML(account.note)}</p>` : ''}
+          </div>
+        `).join('')}
+      </div>
+    `;
+  }
+
+  function renderTimeline(logs) {
+    if (!logs.length) return '<div class="empty">ยังไม่มี Activity Log</div>';
+
+    const latestId = logs[0]?.id;
+    return `
+      <div class="timeline" style="margin-top:18px">
+        ${logs.map((log) => {
+          const author = findProfile(log.created_by);
+          const canEdit = userIsAdmin() || (log.id === latestId && log.created_by === State.profile?.id);
+          return `
+            <div class="timeline-item">
+              <div class="timeline-date">${formatDateTime(log.created_at)}</div>
+              <div class="timeline-body">
+                <div class="actions" style="justify-content:space-between">
+                  <div>
+                    <span class="badge">${escapeHTML(log.log_type)}</span>
+                    <span class="muted small-text">โดย ${escapeHTML(displayName(author))}</span>
+                  </div>
+                  ${canEdit ? `
+                    <div class="actions">
+                      <button class="btn small ghost" data-action="log-edit" data-id="${log.id}">แก้ไข</button>
+                      <button class="btn small danger" data-action="log-delete" data-id="${log.id}">ลบ</button>
+                    </div>
+                  ` : ''}
+                </div>
+                <p>${escapeHTML(log.message)}</p>
+              </div>
+            </div>
+          `;
+        }).join('')}
+      </div>
+    `;
+  }
+
+  function renderAdmin() {
+    return `
+      ${renderTopbar('Admin', 'จัดการ users, modules, email templates และ settings')}
+      <section class="card">
+        <div class="admin-tabs">
+          ${adminTab('users', 'Users')}
+          ${adminTab('modules', 'Modules')}
+          ${adminTab('templates', 'Email Templates')}
+          ${adminTab('settings', 'Settings')}
+        </div>
+        ${State.adminTab === 'users' ? renderAdminUsers() : ''}
+        ${State.adminTab === 'modules' ? renderAdminModules() : ''}
+        ${State.adminTab === 'templates' ? renderAdminTemplates() : ''}
+        ${State.adminTab === 'settings' ? renderAdminSettings() : ''}
+      </section>
+    `;
+  }
+
+  function adminTab(key, label) {
+    return `<button class="admin-tab ${State.adminTab === key ? 'active' : ''}" data-action="admin-tab" data-tab="${key}">${escapeHTML(label)}</button>`;
+  }
+
+  function renderAdminUsers() {
+    return `
+      <div class="config-warning">
+        เพื่อความปลอดภัย การสร้าง Auth User/ตั้งรหัสผ่านต้องทำใน Supabase Dashboard หรือ backend ที่เก็บ service_role ได้เท่านั้น
+        หน้า Admin นี้ใช้แก้ profile, role และสถานะ active ของผู้ใช้ที่มีอยู่แล้ว
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Email</th>
+              <th>ชื่อ</th>
+              <th>Role</th>
+              <th>Active</th>
+              <th>บันทึก</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${State.profiles.map((p) => `
+              <tr>
+                <td>${escapeHTML(p.email)}</td>
+                <td>
+                  <form data-action="admin-profile-save" id="profile-${p.id}">
+                    <input type="hidden" name="id" value="${p.id}">
+                    <input class="input" name="full_name" value="${escapeAttr(p.full_name || '')}">
+                  </form>
+                </td>
+                <td>
+                  <select class="select" name="role" form="profile-${p.id}">
+                    ${option('user', 'user', p.role)}
+                    ${option('admin', 'admin', p.role)}
+                  </select>
+                </td>
+                <td>
+                  <select class="select" name="is_active" form="profile-${p.id}">
+                    ${option('true', 'active', String(Boolean(p.is_active)))}
+                    ${option('false', 'inactive', String(Boolean(p.is_active)))}
+                  </select>
+                </td>
+                <td><button class="btn small primary" type="submit" form="profile-${p.id}">บันทึก</button></td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
+    `;
+  }
+
+  function renderAdminModules() {
+    return `
+      <form data-action="admin-module-save" class="filters">
+        <div class="field" style="min-width:280px">
+          <label>เพิ่มโมดูล</label>
+          <input class="input" name="name" placeholder="เช่น Sales CRM" required>
+        </div>
+        <button class="btn primary" type="submit">เพิ่ม</button>
+      </form>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>ชื่อโมดูล</th><th>สถานะ</th><th>Action</th></tr></thead>
+          <tbody>
+            ${State.modules.map((m) => `
+              <tr>
+                <td>${escapeHTML(m.name)}</td>
+                <td>${m.is_active ? '<span class="badge active">active</span>' : '<span class="badge pending">inactive</span>'}</td>
+                <td>
+                  <button class="btn small ${m.is_active ? 'danger' : 'success'}" data-action="admin-module-toggle" data-id="${m.id}" data-active="${m.is_active}">
+                    ${m.is_active ? 'Deactivate' : 'Activate'}
+                  </button>
+                </td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
+    `;
+  }
+
+  function renderAdminTemplates() {
+    return `
+      <div class="grid two">
+        ${State.emailTemplates.map((tpl) => `
+          <form data-action="admin-template-save" class="panel form-section">
+            <div class="section-title">
+              <h2>${escapeHTML(tpl.name || tpl.template_key)}</h2>
+              <button class="btn small ghost" data-action="admin-template-reset" data-key="${escapeAttr(tpl.template_key)}" type="button">reset default</button>
+            </div>
+            <input type="hidden" name="id" value="${tpl.id}">
+            <div class="field">
+              <label>Subject</label>
+              <input class="input" name="subject" value="${escapeAttr(tpl.subject || '')}" required>
+            </div>
+            <div class="field">
+              <label>Body</label>
+              <textarea class="textarea" name="body" rows="14" required>${escapeHTML(tpl.body || '')}</textarea>
+            </div>
+            <button class="btn primary" type="submit">บันทึก Template</button>
+          </form>
+        `).join('')}
+      </div>
+    `;
+  }
+
+  function renderAdminSettings() {
+    const fixedCc = State.settings.fixed_cc_emails || [];
+    const appsScriptUrl = State.settings.apps_script_url || APP_CONFIG.APPS_SCRIPT_URL || '';
+
+    return `
+      <form data-action="admin-setting-save" class="grid">
+        <div class="field">
+          <label>Fixed CC emails</label>
+          ${renderChipInput('fixed_cc_emails', Array.isArray(fixedCc) ? fixedCc : [], 'พิมพ์อีเมลแล้วกด Enter')}
+        </div>
+        <div class="field">
+          <label>Google Apps Script Web App URL</label>
+          <input class="input" name="apps_script_url" value="${escapeAttr(appsScriptUrl)}" placeholder="https://script.google.com/macros/s/.../exec">
+          <p class="muted small-text">URL นี้เป็น public endpoint ได้ แต่ห้ามใส่ secret ใน frontend</p>
+        </div>
+        <button class="btn primary" type="submit">บันทึก Settings</button>
+      </form>
+    `;
+  }
+
+  function renderForbidden() {
+    return `
+      ${renderTopbar('ไม่มีสิทธิ์เข้าใช้งาน', 'หน้านี้สำหรับ admin เท่านั้น')}
+      <section class="card empty">กรุณาติดต่อ admin หากต้องการสิทธิ์เพิ่มเติม</section>
+    `;
+  }
+
+  function renderNotFound() {
+    return `
+      ${renderTopbar('ไม่พบหน้า', 'URL นี้ไม่มีในระบบ')}
+      <section class="card empty"><a class="btn primary" href="#dashboard">กลับ Dashboard</a></section>
+    `;
+  }
+
+  async function saveDemoForm(form) {
+    const editId = form.dataset.editId || '';
+    const renewFromId = form.dataset.renewFromId || '';
+    const contactEmails = getChipValues(form, 'contact_emails');
+    const selectedModules = $$('input[name="modules"]:checked', form).map((input) => input.value);
+    const accountRows = $$('[data-account-row]', form);
+    const accounts = accountRows.map((row) => ({
+      login_email: $('[name="account_login_email"]', row)?.value.trim(),
+      password: $('[name="account_password"]', row)?.value,
+      note: $('[name="account_note"]', row)?.value.trim() || null
+    })).filter((acc) => acc.login_email || acc.password || acc.note);
+
+    validateDemoForm(form, contactEmails, selectedModules, accounts);
+
+    let companyId;
+    const companyName = form.company_name.value.trim();
+    const existingByName = State.companies.find((c) => normalize(c.company_name) === normalize(companyName));
+    const sourceRow = editId ? getDemoRow(editId) : null;
+
+    if (sourceRow) {
+      companyId = sourceRow.company.id;
+      const { error } = await State.sb.from('companies').update({
+        company_name: companyName,
+        contact_name: form.contact_name.value.trim(),
+        contact_emails: contactEmails,
+        updated_at: new Date().toISOString()
+      }).eq('id', companyId);
+      if (error) throw error;
+    } else if (existingByName) {
+      companyId = existingByName.id;
+      const { error } = await State.sb.from('companies').update({
+        contact_name: form.contact_name.value.trim(),
+        contact_emails: contactEmails,
+        updated_at: new Date().toISOString()
+      }).eq('id', companyId);
+      if (error) throw error;
+    } else {
+      const { data, error } = await State.sb.from('companies').insert({
+        company_name: companyName,
+        contact_name: form.contact_name.value.trim(),
+        contact_emails: contactEmails,
+        created_by: State.profile.id
+      }).select().single();
+      if (error) throw error;
+      companyId = data.id;
+    }
+
+    const status = form.status.value;
+    const roundPayload = {
+      company_id: companyId,
+      status,
+      responsible_user_id: form.responsible_user_id.value,
+      start_date: form.start_date.value,
+      end_date: FINAL_STATUSES.has(status) ? todayISO() : form.end_date.value,
+      renewal_no: Number(form.renewal_no.value || 0),
+      updated_at: new Date().toISOString()
+    };
+
+    let roundId = editId;
+    if (editId) {
+      const { error } = await State.sb.from('demo_rounds').update(roundPayload).eq('id', editId);
+      if (error) throw error;
+    } else {
+      const { data, error } = await State.sb.from('demo_rounds').insert({
+        ...roundPayload,
+        created_by: State.profile.id,
+        renewed_from_round_id: renewFromId || null
+      }).select().single();
+      if (error) throw error;
+      roundId = data.id;
+    }
+
+    await replaceRoundModules(roundId, selectedModules);
+    await replaceAccounts(roundId, accounts);
+
+    const message = form.activity_message.value.trim();
+    if (message) {
+      await insertActivityLog({
+        company_id: companyId,
+        demo_round_id: roundId,
+        log_type: form.log_type.value,
+        message
+      });
+    } else if (!editId) {
+      await insertActivityLog({
+        company_id: companyId,
+        demo_round_id: roundId,
+        log_type: renewFromId ? 'ต่ออายุ demo' : 'หมายเหตุทั่วไป',
+        message: renewFromId ? 'สร้าง demo round ใหม่จากการต่ออายุ' : 'สร้าง demo record ใหม่'
+      });
+    }
+
+    await loadAllData();
+    toast('บันทึก Demo สำเร็จ', 'success');
+    location.hash = `#demos/${roundId}`;
+  }
+
+  function validateDemoForm(form, emails, modules, accounts) {
+    if (!form.company_name.value.trim()) throw new Error('กรุณากรอกชื่อบริษัท');
+    if (!form.contact_name.value.trim()) throw new Error('กรุณากรอกชื่อผู้ติดต่อ');
+    if (!emails.length) throw new Error('กรุณาเพิ่มอีเมลผู้ติดต่ออย่างน้อย 1 รายการ');
+    const invalidEmails = emails.filter((email) => !isEmail(email));
+    if (invalidEmails.length) throw new Error(`รูปแบบอีเมลไม่ถูกต้อง: ${invalidEmails.join(', ')}`);
+    if (!modules.length) throw new Error('กรุณาเลือกโมดูลอย่างน้อย 1 รายการ');
+    if (!accounts.length) throw new Error('กรุณาเพิ่ม demo account อย่างน้อย 1 รายการ');
+    for (const account of accounts) {
+      if (!isEmail(account.login_email || '')) throw new Error(`อีเมล demo account ไม่ถูกต้อง: ${account.login_email || '-'}`);
+      if (!account.password) throw new Error(`กรุณากรอกรหัสผ่านของ ${account.login_email}`);
+    }
+    if (form.end_date.value < form.start_date.value) throw new Error('วันที่สิ้นสุดต้องไม่ก่อนวันที่เริ่ม');
+  }
+
+  async function replaceRoundModules(roundId, moduleIds) {
+    const { error: deleteError } = await State.sb.from('demo_round_modules').delete().eq('demo_round_id', roundId);
+    if (deleteError) throw deleteError;
+
+    if (!moduleIds.length) return;
+    const rows = moduleIds.map((module_id) => ({ demo_round_id: roundId, module_id }));
+    const { error } = await State.sb.from('demo_round_modules').insert(rows);
+    if (error) throw error;
+  }
+
+  async function replaceAccounts(roundId, accounts) {
+    const { error: deleteError } = await State.sb.from('demo_accounts').delete().eq('demo_round_id', roundId);
+    if (deleteError) throw deleteError;
+
+    if (!accounts.length) return;
+    const rows = accounts.map((account) => ({ ...account, demo_round_id: roundId }));
+    const { error } = await State.sb.from('demo_accounts').insert(rows);
+    if (error) throw error;
+  }
+
+  async function addActivityLog(form) {
+    const message = form.message.value.trim();
+    if (!message) throw new Error('กรุณากรอกรายละเอียด log');
+
+    await insertActivityLog({
+      company_id: form.dataset.companyId,
+      demo_round_id: form.dataset.roundId,
+      log_type: form.log_type.value,
+      message
+    });
+
+    form.reset();
+    await loadAllData();
+    render();
+    toast('เพิ่ม Activity Log แล้ว', 'success');
+  }
+
+  async function insertActivityLog(payload) {
+    const { error } = await State.sb.from('activity_logs').insert({
+      ...payload,
+      created_by: State.profile.id
+    });
+    if (error) throw error;
+  }
+
+  async function editLog(id) {
+    const log = State.activityLogs.find((item) => item.id === id);
+    if (!log) return;
+
+    const message = window.prompt('แก้ไขรายละเอียด log', log.message);
+    if (message === null) return;
+    if (!message.trim()) {
+      toast('ข้อความ log ห้ามว่าง', 'warning');
+      return;
+    }
+
+    const { error } = await State.sb.from('activity_logs').update({
+      message: message.trim(),
+      updated_at: new Date().toISOString()
+    }).eq('id', id);
+    if (error) throw error;
+
+    await loadAllData();
+    render();
+    toast('แก้ไข log แล้ว', 'success');
+  }
+
+  async function deleteLog(id) {
+    if (!window.confirm('ลบ log นี้หรือไม่? ระบบจะ soft delete เพื่อเก็บ audit')) return;
+
+    const { error } = await State.sb.from('activity_logs').update({
+      deleted_at: new Date().toISOString()
+    }).eq('id', id);
+    if (error) throw error;
+
+    await loadAllData();
+    render();
+    toast('ลบ log แล้ว', 'success');
+  }
+
+  async function softDeleteDemo(roundId) {
+    const row = getDemoRow(roundId);
+    if (!row) return;
+    if (!canSoftDelete(row)) {
+      toast('ไม่มีสิทธิ์ลบรายการนี้', 'error');
+      return;
+    }
+
+    if (!window.confirm(`ลบ Demo ของ ${row.company.company_name} หรือไม่?`)) return;
+
+    const { error } = await State.sb.from('demo_rounds').update({
+      deleted_at: new Date().toISOString()
+    }).eq('id', roundId);
+    if (error) throw error;
+
+    await insertActivityLog({
+      company_id: row.company.id,
+      demo_round_id: row.round.id,
+      log_type: 'หมายเหตุทั่วไป',
+      message: 'ลบ demo round แบบ soft delete'
+    }).catch(() => undefined);
+
+    await loadAllData();
+    render();
+    toast('ลบ Demo แล้ว', 'success');
+  }
+
+  function openEmailPreview(roundId, type = 'first_demo_email') {
+    const row = getDemoRow(roundId);
+    if (!row) return toast('ไม่พบ demo round', 'error');
+
+    const tpl = getTemplate(type);
+    const rendered = renderEmail(row, tpl);
+    const responsibleEmail = row.responsible?.email ? [row.responsible.email] : [];
+    const fixedCc = Array.isArray(State.settings.fixed_cc_emails) ? State.settings.fixed_cc_emails : [];
+    const cc = unique([...responsibleEmail, ...fixedCc].filter(Boolean));
+
+    showModal(`
+      <header>
+        <div>
+          <strong>Preview Email</strong>
+          <div class="muted small-text">${escapeHTML(tpl.name || type)}</div>
+        </div>
+        <button class="btn small ghost" data-action="modal-close">ปิด</button>
+      </header>
+      <main class="grid">
+        <div><strong>To:</strong> ${escapeHTML((row.company.contact_emails || []).join(', '))}</div>
+        <div><strong>CC:</strong> ${escapeHTML(cc.join(', ') || '-')}</div>
+        <div><strong>Subject:</strong> ${escapeHTML(rendered.subject)}</div>
+        <div class="email-preview">${escapeHTML(rendered.body)}</div>
+      </main>
+      <footer>
+        <button class="btn ghost" data-action="modal-close">ยกเลิก</button>
+        <button class="btn primary" data-action="email-send" data-id="${roundId}" data-type="${escapeAttr(type)}">ส่ง / Queue Email</button>
+      </footer>
+    `);
+  }
+
+  async function sendPreviewEmail(roundId, type = 'first_demo_email') {
+    const row = getDemoRow(roundId);
+    if (!row) return;
+
+    const tpl = getTemplate(type);
+    const rendered = renderEmail(row, tpl);
+    const responsibleEmail = row.responsible?.email ? [row.responsible.email] : [];
+    const fixedCc = Array.isArray(State.settings.fixed_cc_emails) ? State.settings.fixed_cc_emails : [];
+    const cc = unique([...responsibleEmail, ...fixedCc].filter(Boolean));
+
+    const { data, error } = await State.sb.from('email_logs').insert({
+      demo_round_id: row.round.id,
+      email_type: type,
+      to_emails: row.company.contact_emails || [],
+      cc_emails: cc,
+      subject: rendered.subject,
+      body: rendered.body,
+      sent_status: 'queued',
+      sent_by: State.profile.id
+    }).select().single();
+    if (error) throw error;
+
+    let status = 'queued';
+    let errorMessage = null;
+    const endpoint = State.settings.apps_script_url || APP_CONFIG.APPS_SCRIPT_URL;
+
+    if (endpoint) {
+      try {
+        const res = await fetch(endpoint, {
+          method: 'POST',
+          mode: 'cors',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify({ email_log_id: data.id })
+        });
+        if (!res.ok) throw new Error(`Apps Script HTTP ${res.status}`);
+        status = 'sent';
+      } catch (err) {
+        status = 'error';
+        errorMessage = safeError(err);
+      }
+    }
+
+    const updatePayload = {
+      sent_status: status,
+      error_message: errorMessage,
+      sent_at: status === 'sent' ? new Date().toISOString() : null
+    };
+    await State.sb.from('email_logs').update(updatePayload).eq('id', data.id);
+
+    if (type === 'first_demo_email' && status !== 'error') {
+      await State.sb.from('demo_rounds').update({ first_email_sent_at: new Date().toISOString() }).eq('id', row.round.id);
+    }
+
+    await insertActivityLog({
+      company_id: row.company.id,
+      demo_round_id: row.round.id,
+      log_type: 'ส่งอีเมล',
+      message: status === 'sent'
+        ? `ส่งอีเมล ${tpl.name || type} แล้ว`
+        : status === 'queued'
+          ? `บันทึกคิวอีเมล ${tpl.name || type} แล้ว`
+          : `ส่งอีเมลไม่สำเร็จ: ${errorMessage}`
+    }).catch(() => undefined);
+
+    closeModal();
+    await loadAllData();
+    render();
+
+    if (status === 'sent') toast('ส่งอีเมลสำเร็จ', 'success');
+    else if (status === 'queued') toast('บันทึก email log เป็น queued แล้ว', 'warning');
+    else toast(`ส่งอีเมลไม่สำเร็จ: ${errorMessage}`, 'error');
+  }
+
+  async function queueReminderEmails() {
+    const dueRows = getDemoRows().filter((row) => {
+      return !row.round.reminder_email_sent_at
+        && !FINAL_STATUSES.has(row.effectiveStatus)
+        && row.remainingDays === 3;
+    });
+
+    if (!dueRows.length) {
+      toast('ไม่มีรายการที่ต้องส่ง reminder วันนี้', 'success');
+      return;
+    }
+
+    for (const row of dueRows) {
+      const tpl = getTemplate('expiry_reminder_email');
+      const rendered = renderEmail(row, tpl);
+      const responsibleEmail = row.responsible?.email ? [row.responsible.email] : [];
+      const fixedCc = Array.isArray(State.settings.fixed_cc_emails) ? State.settings.fixed_cc_emails : [];
+      const cc = unique([...responsibleEmail, ...fixedCc].filter(Boolean));
+
+      const { error } = await State.sb.from('email_logs').insert({
+        demo_round_id: row.round.id,
+        email_type: 'expiry_reminder_email',
+        to_emails: row.company.contact_emails || [],
+        cc_emails: cc,
+        subject: rendered.subject,
+        body: rendered.body,
+        sent_status: 'queued',
+        sent_by: State.profile.id
+      });
+      if (error) throw error;
+
+      await State.sb.from('demo_rounds').update({ reminder_email_sent_at: new Date().toISOString() }).eq('id', row.round.id);
+      await insertActivityLog({
+        company_id: row.company.id,
+        demo_round_id: row.round.id,
+        log_type: 'ส่งอีเมล',
+        message: 'queue reminder email ก่อนหมดอายุ 3 วัน'
+      }).catch(() => undefined);
+    }
+
+    await loadAllData();
+    render();
+    toast(`queue reminder แล้ว ${dueRows.length} รายการ`, 'success');
+  }
+
+  async function saveModule(form) {
+    const name = form.name.value.trim();
+    if (!name) throw new Error('กรุณากรอกชื่อโมดูล');
+
+    const { error } = await State.sb.from('modules').insert({ name });
+    if (error) throw error;
+    form.reset();
+    await loadAllData();
+    render();
+    toast('เพิ่มโมดูลแล้ว', 'success');
+  }
+
+  async function toggleModule(id, isActive) {
+    const { error } = await State.sb.from('modules').update({ is_active: !isActive }).eq('id', id);
+    if (error) throw error;
+    await loadAllData();
+    render();
+    toast('อัปเดตโมดูลแล้ว', 'success');
+  }
+
+  async function saveProfileAdmin(form) {
+    const id = form.id.value;
+    const fullName = form.full_name.value.trim();
+    const role = form.role.value;
+    const isActive = form.is_active.value === 'true';
+
+    const { error } = await State.sb.from('profiles').update({
+      full_name: fullName,
+      role,
+      is_active
+    }).eq('id', id);
+    if (error) throw error;
+
+    await loadAllData();
+    render();
+    toast('บันทึก profile แล้ว', 'success');
+  }
+
+  async function saveEmailTemplate(form) {
+    const { error } = await State.sb.from('email_templates').update({
+      subject: form.subject.value,
+      body: form.body.value,
+      updated_by: State.profile.id,
+      updated_at: new Date().toISOString()
+    }).eq('id', form.id.value);
+    if (error) throw error;
+
+    await loadAllData();
+    render();
+    toast('บันทึก template แล้ว', 'success');
+  }
+
+  async function resetTemplate(key) {
+    const defaults = defaultTemplates();
+    const tpl = defaults[key];
+    if (!tpl) return;
+
+    const { error } = await State.sb.from('email_templates').update({
+      subject: tpl.subject,
+      body: tpl.body,
+      updated_by: State.profile.id,
+      updated_at: new Date().toISOString()
+    }).eq('template_key', key);
+    if (error) throw error;
+
+    await loadAllData();
+    render();
+    toast('reset template แล้ว', 'success');
+  }
+
+  async function saveSettings(form) {
+    const fixedCc = getChipValues(form, 'fixed_cc_emails');
+    const invalid = fixedCc.filter((email) => !isEmail(email));
+    if (invalid.length) throw new Error(`Fixed CC ไม่ถูกต้อง: ${invalid.join(', ')}`);
+
+    const appsScriptUrl = form.apps_script_url.value.trim();
+
+    const rows = [
+      { key: 'fixed_cc_emails', value: fixedCc, updated_by: State.profile.id },
+      { key: 'apps_script_url', value: appsScriptUrl, updated_by: State.profile.id }
+    ];
+
+    for (const row of rows) {
+      const { error } = await State.sb.from('settings').upsert(row, { onConflict: 'key' });
+      if (error) throw error;
+    }
+
+    await loadAllData();
+    render();
+    toast('บันทึก settings แล้ว', 'success');
+  }
+
+  function getDemoRows() {
+    return State.rounds
+      .map((round) => {
+        const company = State.companies.find((c) => c.id === round.company_id);
+        if (!company) return null;
+
+        const roundModuleIds = State.roundModules
+          .filter((rm) => rm.demo_round_id === round.id)
+          .map((rm) => rm.module_id);
+
+        const modules = State.modules.filter((m) => roundModuleIds.includes(m.id));
+        const accounts = State.accounts.filter((acc) => acc.demo_round_id === round.id);
+        const responsible = findProfile(round.responsible_user_id);
+        const logs = State.activityLogs
+          .filter((log) => log.company_id === company.id)
+          .sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
+        const effectiveStatus = computeStatus(round);
+        const totalDays = daysBetween(round.start_date, round.end_date) + 1;
+        const remainingDays = daysBetween(todayISO(), round.end_date);
+
+        return {
+          company,
+          round,
+          modules,
+          accounts,
+          responsible,
+          latestLog: logs[0] || null,
+          effectiveStatus,
+          totalDays: Math.max(totalDays, 0),
+          remainingDays
+        };
+      })
+      .filter(Boolean);
+  }
+
+  function getFilteredRows() {
+    const search = normalize(State.filters.search);
+    let rows = getDemoRows().filter((row) => {
+      const haystack = normalize([
+        row.company.company_name,
+        row.company.contact_name,
+        ...(row.company.contact_emails || []),
+        row.effectiveStatus,
+        displayName(row.responsible),
+        row.responsible?.email,
+        ...row.modules.map((m) => m.name),
+        ...row.accounts.map((a) => a.login_email),
+        row.latestLog?.message
+      ].filter(Boolean).join(' '));
+
+      if (search && !haystack.includes(search)) return false;
+      if (State.filters.status && row.effectiveStatus !== State.filters.status) return false;
+      if (State.filters.responsible && row.round.responsible_user_id !== State.filters.responsible) return false;
+      if (State.filters.module && !row.modules.some((m) => m.id === State.filters.module)) return false;
+      if (State.filters.nearOnly && !(row.remainingDays >= 0 && row.remainingDays <= 7 && !FINAL_STATUSES.has(row.effectiveStatus))) return false;
+      return true;
+    });
+
+    rows = sortRows(rows, State.filters.sort);
+    return rows;
+  }
+
+  function sortRows(rows, sortKey) {
+    const cloned = [...rows];
+    const compareText = (a, b) => String(a || '').localeCompare(String(b || ''), 'th');
+    const compareDate = (a, b) => new Date(a || 0) - new Date(b || 0);
+
+    switch (sortKey) {
+      case 'created_desc':
+        return cloned.sort((a, b) => compareDate(b.round.created_at, a.round.created_at));
+      case 'start_asc':
+        return cloned.sort((a, b) => compareDate(a.round.start_date, b.round.start_date));
+      case 'end_asc':
+        return cloned.sort((a, b) => compareDate(a.round.end_date, b.round.end_date));
+      case 'remaining_asc':
+        return cloned.sort((a, b) => a.remainingDays - b.remainingDays);
+      case 'company_asc':
+        return cloned.sort((a, b) => compareText(a.company.company_name, b.company.company_name));
+      case 'status_asc':
+        return cloned.sort((a, b) => compareText(a.effectiveStatus, b.effectiveStatus));
+      case 'updated_desc':
+      default:
+        return cloned.sort((a, b) => compareDate(b.round.updated_at, a.round.updated_at));
+    }
+  }
+
+  function getDemoRow(roundId) {
+    return getDemoRows().find((row) => row.round.id === roundId);
+  }
+
+  function countByStatus(rows) {
+    const counts = {};
+    for (const row of rows) {
+      counts[row.effectiveStatus] = (counts[row.effectiveStatus] || 0) + 1;
+    }
+    return counts;
+  }
+
+  function countByModule(rows) {
+    const counts = {};
+    for (const row of rows) {
+      for (const module of row.modules) {
+        counts[module.name] = (counts[module.name] || 0) + 1;
+      }
+    }
+    return counts;
+  }
+
+  function barChart(counts) {
+    const entries = Object.entries(counts || {}).sort((a, b) => b[1] - a[1]);
+    if (!entries.length) return '<div class="empty">ไม่มีข้อมูล</div>';
+
+    const max = Math.max(...entries.map(([, value]) => value), 1);
+    return `
+      <div class="bar-list" style="margin-top:14px">
+        ${entries.map(([label, value]) => `
+          <div class="bar-row">
+            <div>${escapeHTML(label)}</div>
+            <div class="bar-track"><div class="bar-fill" style="--w:${Math.round((value / max) * 100)}%"></div></div>
+            <strong>${value}</strong>
+          </div>
+        `).join('')}
+      </div>
+    `;
+  }
+
+  function exportDemoRows(all) {
+    const rows = all ? getDemoRows() : getFilteredRows();
+    const data = rows.map((row) => ({
+      'ชื่อบริษัท': row.company.company_name,
+      'ชื่อผู้ติดต่อ': row.company.contact_name,
+      'อีเมลผู้ติดต่อ': (row.company.contact_emails || []).join(', '),
+      'สถานะ': row.effectiveStatus,
+      'ผู้รับผิดชอบ': displayName(row.responsible),
+      'วันที่เริ่ม': row.round.start_date,
+      'วันที่สิ้นสุด': row.round.end_date,
+      'จำนวนวันทั้งหมด': row.totalDays,
+      'จำนวนวันคงเหลือ': Math.max(row.remainingDays, 0),
+      'โมดูล': row.modules.map((m) => m.name).join(', '),
+      'Demo accounts': row.accounts.map((a) => a.login_email).join(', '),
+      'จำนวนครั้งที่ต่ออายุ': row.round.renewal_no || 0,
+      'วันที่ส่งอีเมลครั้งแรก': row.round.first_email_sent_at || '',
+      'วันที่ส่ง reminder': row.round.reminder_email_sent_at || '',
+      'วันที่สร้างรายการ': row.round.created_at || '',
+      'วันที่แก้ไขล่าสุด': row.round.updated_at || '',
+      'Note ล่าสุด': row.latestLog?.message || ''
+    }));
+
+    const filename = `demo-crm-${all ? 'all' : 'filtered'}-${todayISO()}.xlsx`;
+
+    if (window.XLSX) {
+      const wb = window.XLSX.utils.book_new();
+      const ws = window.XLSX.utils.json_to_sheet(data);
+      window.XLSX.utils.book_append_sheet(wb, ws, 'Demo CRM');
+      window.XLSX.writeFile(wb, filename);
+      return;
+    }
+
+    downloadText(filename.replace('.xlsx', '.csv'), toCSV(data), 'text/csv;charset=utf-8');
+  }
+
+  function toCSV(rows) {
+    if (!rows.length) return '';
+    const headers = Object.keys(rows[0]);
+    const quote = (value) => `"${String(value ?? '').replace(/"/g, '""')}"`;
+    return [headers.map(quote).join(','), ...rows.map((row) => headers.map((h) => quote(row[h])).join(','))].join('\n');
+  }
+
+  function downloadText(filename, text, type) {
+    const blob = new Blob([text], { type });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function renderEmail(row, template) {
+    const accounts = row.accounts.map((acc, index) => {
+      return `${index + 1}. Email: ${acc.login_email}\n   Password: ${acc.password}${acc.note ? `\n   Note: ${acc.note}` : ''}`;
+    }).join('\n\n');
+
+    const vars = {
+      company_name: row.company.company_name,
+      contact_name: row.company.contact_name,
+      modules: row.modules.map((m) => m.name).join(', '),
+      start_date: formatDate(row.round.start_date),
+      end_date: formatDate(row.round.end_date),
+      total_days: String(row.totalDays),
+      remaining_days: String(Math.max(row.remainingDays, 0)),
+      demo_accounts: accounts,
+      responsible_name: displayName(row.responsible),
+      responsible_email: row.responsible?.email || '',
+      note: row.latestLog?.message || '-'
+    };
+
+    const replaceVars = (text) => String(text || '').replace(/\{\{(.*?)\}\}/g, (_match, key) => {
+      return vars[String(key).trim()] ?? '';
+    });
+
+    return {
+      subject: replaceVars(template.subject),
+      body: replaceVars(template.body)
+    };
+  }
+
+  function getTemplate(key) {
+    const tpl = State.emailTemplates.find((item) => item.template_key === key);
+    if (tpl) return tpl;
+    return { template_key: key, ...defaultTemplates()[key] };
+  }
+
+  function defaultTemplates() {
+    return {
+      first_demo_email: {
+        name: 'ส่งข้อมูล Demo ครั้งแรก',
+        subject: 'แจ้งข้อมูลสำหรับทดลองใช้งานระบบ Demo',
+        body: `เรียนคุณ {{contact_name}}
+
+ทางทีมงานขอแจ้งข้อมูลสำหรับทดลองใช้งานระบบ Demo ของบริษัท {{company_name}} ตามรายละเอียดด้านล่าง
+
+บริษัท: {{company_name}}
+โมดูลที่เปิดให้ทดลองใช้งาน: {{modules}}
+วันที่เริ่มใช้งาน: {{start_date}}
+วันที่สิ้นสุดการทดลองใช้งาน: {{end_date}}
+ระยะเวลาทดลองใช้งาน: {{total_days}} วัน
+
+ข้อมูลบัญชีสำหรับเข้าใช้งาน:
+
+{{demo_accounts}}
+
+หมายเหตุเพิ่มเติม:
+{{note}}
+
+หากพบปัญหาในการเข้าใช้งาน หรือต้องการสอบถามข้อมูลเพิ่มเติม สามารถติดต่อทีมงานได้ทางอีเมลฉบับนี้
+
+ขอบคุณครับ/ค่ะ
+ทีม Customer Support`
+      },
+      expiry_reminder_email: {
+        name: 'เตือนก่อน Demo หมดอายุ',
+        subject: 'แจ้งเตือน Demo ใกล้หมดอายุ',
+        body: `เรียนคุณ {{contact_name}}
+
+ทางทีมงานขอแจ้งเตือนว่า Demo ของบริษัท {{company_name}} จะหมดอายุในวันที่ {{end_date}}
+
+รายละเอียด Demo:
+
+บริษัท: {{company_name}}
+โมดูลที่ทดลองใช้งาน: {{modules}}
+วันที่เริ่มใช้งาน: {{start_date}}
+วันที่สิ้นสุดการทดลองใช้งาน: {{end_date}}
+จำนวนวันที่เหลือ: {{remaining_days}} วัน
+
+หากต้องการต่ออายุ Demo หรือต้องการสอบถามข้อมูลเพิ่มเติม สามารถติดต่อกลับทีมงานได้ทางอีเมลฉบับนี้
+
+ขอบคุณครับ/ค่ะ
+ทีม Customer Support`
+      }
+    };
+  }
+
+  function renderChipInput(name, values = [], placeholder = '') {
+    const safeValues = unique((values || []).filter(Boolean));
+    return `
+      <div class="chip-input" data-chip-name="${escapeAttr(name)}">
+        ${safeValues.map((value) => renderChip(value)).join('')}
+        <input data-chip-input type="text" placeholder="${escapeAttr(placeholder)}">
+        <input type="hidden" name="${escapeAttr(name)}" value="${escapeAttr(JSON.stringify(safeValues))}">
+      </div>
+    `;
+  }
+
+  function renderChip(value) {
+    return `
+      <span class="chip" data-chip-value="${escapeAttr(value)}">
+        ${escapeHTML(value)}
+        <button type="button" data-action="chip-remove" aria-label="remove">×</button>
+      </span>
+    `;
+  }
+
+  function addChipFromInput(input) {
+    const value = input.value.trim().replace(/,$/, '');
+    if (!value) return;
+
+    if (!isEmail(value)) {
+      toast(`อีเมลไม่ถูกต้อง: ${value}`, 'warning');
+      return;
+    }
+
+    const wrapper = input.closest('[data-chip-name]');
+    const hidden = $('input[type="hidden"]', wrapper);
+    const current = getChipValuesFromWrapper(wrapper);
+    if (!current.includes(value)) current.push(value);
+
+    input.insertAdjacentHTML('beforebegin', renderChip(value));
+    hidden.value = JSON.stringify(current);
+    input.value = '';
+  }
+
+  function removeChip(button) {
+    const wrapper = button.closest('[data-chip-name]');
+    const chip = button.closest('[data-chip-value]');
+    chip?.remove();
+
+    const hidden = $('input[type="hidden"]', wrapper);
+    hidden.value = JSON.stringify(getChipValuesFromWrapper(wrapper));
+  }
+
+  function getChipValues(form, name) {
+    const wrapper = form.querySelector(`[data-chip-name="${escapeCSSIdent(name)}"]`);
+    if (!wrapper) return [];
+    return getChipValuesFromWrapper(wrapper);
+  }
+
+  function getChipValuesFromWrapper(wrapper) {
+    return $$('.chip', wrapper).map((chip) => chip.dataset.chipValue).filter(Boolean);
+  }
+
+  function addAccountRow() {
+    const list = $('#accounts-list');
+    if (!list) return;
+    list.insertAdjacentHTML('beforeend', renderAccountRow());
+  }
+
+  function togglePassword(button) {
+    const mask = button.parentElement?.querySelector('[data-password]');
+    if (!mask) return;
+    const isShown = mask.dataset.shown === 'true';
+    mask.textContent = isShown ? '••••••••' : mask.dataset.password;
+    mask.dataset.shown = String(!isShown);
+    mask.classList.toggle('password-mask', isShown);
+  }
+
+  async function copyText(text) {
+    if (!text) return;
+    try {
+      await navigator.clipboard.writeText(text);
+      toast('copy แล้ว', 'success');
+    } catch {
+      toast('copy ไม่สำเร็จ กรุณา copy เอง', 'warning');
+    }
+  }
+
+  function showModal(html) {
+    $('#modal-root').innerHTML = `<div class="modal-backdrop"><section class="modal">${html}</section></div>`;
+  }
+
+  function closeModal() {
+    $('#modal-root').innerHTML = '';
+  }
+
+  function toast(message, type = '') {
+    const root = $('#toast-root');
+    const div = document.createElement('div');
+    div.className = `toast ${type}`;
+    div.textContent = message;
+    root.appendChild(div);
+    window.setTimeout(() => div.remove(), 4600);
+  }
+
+  function statusBadge(status) {
+    const className = status === STATUS.PENDING ? 'pending'
+      : status === STATUS.ACTIVE ? 'active'
+        : status === STATUS.EXPIRED ? 'expired'
+          : status === STATUS.CLOSED ? 'closed'
+            : status === STATUS.CUSTOMER ? 'customer'
+              : '';
+    return `<span class="badge ${className}">${escapeHTML(status)}</span>`;
+  }
+
+  function option(value, label, selected) {
+    return `<option value="${escapeAttr(value)}" ${String(value) === String(selected) ? 'selected' : ''}>${escapeHTML(label)}</option>`;
+  }
+
+  function findProfile(id) {
+    return State.profiles.find((p) => p.id === id) || null;
+  }
+
+  function displayName(profile) {
+    if (!profile) return '-';
+    return profile.full_name || profile.email || '-';
+  }
+
+  function userIsAdmin() {
+    return State.profile?.role === 'admin';
+  }
+
+  function canSoftDelete(row) {
+    if (userIsAdmin()) return true;
+    return row.round.created_by === State.profile?.id && row.effectiveStatus === STATUS.PENDING;
+  }
+
+  function computeStatus(round) {
+    if (!round) return STATUS.PENDING;
+    if (FINAL_STATUSES.has(round.status)) return round.status;
+
+    const today = todayISO();
+    if (round.start_date && today < round.start_date) return STATUS.PENDING;
+    if (round.end_date && today > round.end_date) return STATUS.EXPIRED;
+    return STATUS.ACTIVE;
+  }
+
+  function formatRemaining(days) {
+    if (days < 0) return `หมดอายุแล้ว ${Math.abs(days)} วัน`;
+    if (days === 0) return 'หมดอายุวันนี้';
+    return `${days} วัน`;
+  }
+
+  function daysBetween(start, end) {
+    if (!start || !end) return 0;
+    const s = new Date(`${start}T00:00:00`);
+    const e = new Date(`${end}T00:00:00`);
+    return Math.floor((e - s) / 86400000);
+  }
+
+  function todayISO() {
+    const now = new Date();
+    now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+    return now.toISOString().slice(0, 10);
+  }
+
+  function addDaysISO(date, days) {
+    const d = new Date(`${date}T00:00:00`);
+    d.setDate(d.getDate() + days);
+    return d.toISOString().slice(0, 10);
+  }
+
+  function defaultMonthRange() {
+    const now = new Date();
+    const start = new Date(now.getFullYear(), now.getMonth(), 1);
+    const end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    return {
+      start: toLocalISODate(start),
+      end: toLocalISODate(end)
+    };
+  }
+
+  function toLocalISODate(date) {
+    const d = new Date(date);
+    d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+    return d.toISOString().slice(0, 10);
+  }
+
+  function dateInRange(date, start, end) {
+    if (!date) return false;
+    return (!start || date >= start) && (!end || date <= end);
+  }
+
+  function formatDate(value) {
+    if (!value) return '-';
+    return new Intl.DateTimeFormat('th-TH', { dateStyle: 'medium' }).format(new Date(`${String(value).slice(0, 10)}T00:00:00`));
+  }
+
+  function formatDateTime(value) {
+    if (!value) return '-';
+    return new Intl.DateTimeFormat('th-TH', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value));
+  }
+
+  function normalize(value) {
+    return String(value || '').trim().toLowerCase();
+  }
+
+  function isEmail(value) {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || '').trim());
+  }
+
+  function unique(values) {
+    return [...new Set(values.map((value) => String(value || '').trim()).filter(Boolean))];
+  }
+
+
+  function escapeCSSIdent(value) {
+    if (window.CSS && typeof window.CSS.escape === 'function') {
+      return window.CSS.escape(value);
+    }
+    return String(value).replace(/"/g, '\\"');
+  }
+
+  function escapeHTML(value) {
+    return String(value ?? '').replace(/[&<>"']/g, (char) => ({
+      '&': '&amp;',
+      '<': '&lt;',
+      '>': '&gt;',
+      '"': '&quot;',
+      "'": '&#039;'
+    })[char]);
+  }
+
+  function escapeAttr(value) {
+    return escapeHTML(value).replace(/`/g, '&#096;');
+  }
+
+  function safeError(error) {
+    if (!error) return 'Unknown error';
+    if (typeof error === 'string') return error;
+    return error.message || error.error_description || JSON.stringify(error);
+  }
+})();
