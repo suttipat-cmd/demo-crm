@@ -1,16 +1,20 @@
-/* Demo CRM v1.0.0
+/* Demo CRM v1.0.1
    Static SPA for GitHub Pages + Supabase.
    Security rule: never place service_role key, database password, or private token in this file.
 */
 (() => {
   'use strict';
 
-  const APP_VERSION = '1.0.0';
+  const APP_VERSION = '1.0.1';
   const APP_CONFIG = {
     SUPABASE_URL: 'https://hacmassihdqlgkmwoivs.supabase.co',
     SUPABASE_ANON_KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhhY21hc3NpaGRxbGdrbXdvaXZzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkxMjk1ODgsImV4cCI6MjA5NDcwNTU4OH0.TgkJCHaRndMDZY2SANXCjFLdMkHUd_bxJOb0K9Znpa8',
     APPS_SCRIPT_URL: ''
   };
+
+  const AUTH_TIMEOUT_MS = 12000;
+  const DATA_TIMEOUT_MS = 18000;
+  const FOREGROUND_REFRESH_COOLDOWN_MS = 30000;
 
   const STATUS = Object.freeze({
     PENDING: 'รอดำเนินการ',
@@ -37,8 +41,14 @@
     session: null,
     profile: null,
     currentRoute: '#dashboard',
+    authReady: false,
+    bootError: '',
+    dataError: '',
     loading: false,
+    loadingMessage: '',
     dataLoaded: false,
+    loadSeq: 0,
+    lastForegroundRefreshAt: 0,
     profiles: [],
     companies: [],
     rounds: [],
@@ -72,40 +82,187 @@
 
   function boot() {
     setupGlobalEvents();
+    setupLifecycleRefresh();
+    State.currentRoute = location.hash || '#dashboard';
 
     if (!window.supabase || typeof window.supabase.createClient !== 'function') {
-      renderFatal('โหลด Supabase client ไม่สำเร็จ กรุณาตรวจสอบ internet/CDN หรือเปิดใหม่อีกครั้ง');
+      State.authReady = true;
+      State.bootError = 'โหลด Supabase client ไม่สำเร็จ กรุณาตรวจสอบ internet/CDN หรือเปิดใหม่อีกครั้ง';
+      render();
       return;
     }
 
-    State.sb = window.supabase.createClient(APP_CONFIG.SUPABASE_URL, APP_CONFIG.SUPABASE_ANON_KEY);
-
-    State.sb.auth.onAuthStateChange(async (_event, session) => {
-      State.session = session;
-      State.dataLoaded = false;
-      if (session) {
-        await loadProfile();
-        await loadAllData();
-      }
+    if (needsConfig()) {
+      State.authReady = true;
       render();
+      return;
+    }
+
+    State.sb = window.supabase.createClient(APP_CONFIG.SUPABASE_URL, APP_CONFIG.SUPABASE_ANON_KEY, {
+      auth: {
+        persistSession: true,
+        autoRefreshToken: true,
+        detectSessionInUrl: true
+      }
+    });
+
+    State.sb.auth.onAuthStateChange((_event, session) => {
+      hydrateSession(session, `auth:${_event}`).catch((error) => {
+        State.dataError = `โหลด session ไม่สำเร็จ: ${safeError(error)}`;
+        State.loading = false;
+        render();
+      });
     });
 
     initSession();
+    render();
   }
 
   async function initSession() {
     try {
-      const { data, error } = await State.sb.auth.getSession();
+      State.loading = true;
+      State.loadingMessage = 'กำลังตรวจสอบ session...';
+      render();
+
+      const { data, error } = await withTimeout(
+        State.sb.auth.getSession(),
+        AUTH_TIMEOUT_MS,
+        'ตรวจสอบ session นานเกินไป'
+      );
       if (error) throw error;
-      State.session = data.session;
-      if (State.session) {
-        await loadProfile();
-        await loadAllData();
+      await hydrateSession(data.session, 'initial');
+    } catch (error) {
+      State.authReady = true;
+      State.session = null;
+      State.profile = null;
+      State.dataLoaded = false;
+      State.loading = false;
+      State.bootError = `เริ่มระบบไม่สำเร็จ: ${safeError(error)}`;
+      render();
+    }
+  }
+
+  async function hydrateSession(session, reason = 'unknown') {
+    const seq = ++State.loadSeq;
+    State.session = session || null;
+    State.authReady = true;
+    State.bootError = '';
+    State.dataError = '';
+    State.currentRoute = location.hash || '#dashboard';
+
+    if (!State.session) {
+      State.profile = null;
+      State.dataLoaded = false;
+      State.loading = false;
+      State.loadingMessage = '';
+      render();
+      return;
+    }
+
+    State.loading = true;
+    State.loadingMessage = reason === 'initial' ? 'กำลังโหลดข้อมูลผู้ใช้...' : 'กำลังรีเฟรชข้อมูล...';
+    render();
+
+    try {
+      await loadProfile(seq);
+      if (seq !== State.loadSeq) return;
+
+      State.loadingMessage = 'กำลังโหลดข้อมูลระบบ...';
+      render();
+
+      await loadAllData(false, seq);
+      if (seq !== State.loadSeq) return;
+    } catch (error) {
+      if (seq !== State.loadSeq) return;
+      State.dataError = safeError(error);
+      State.dataLoaded = false;
+    } finally {
+      if (seq === State.loadSeq) {
+        State.loading = false;
+        State.loadingMessage = '';
+        render();
       }
-      State.currentRoute = location.hash || '#dashboard';
+    }
+  }
+
+  function setupLifecycleRefresh() {
+    window.addEventListener('pageshow', (event) => {
+      if (event.persisted) {
+        refreshAfterForeground('pageshow');
+      }
+    });
+
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') {
+        refreshAfterForeground('visibilitychange');
+      }
+    });
+
+    window.addEventListener('online', () => {
+      refreshAfterForeground('online');
+    });
+  }
+
+  async function refreshAfterForeground(reason) {
+    if (!State.authReady || !State.sb || needsConfig()) return;
+    if (document.visibilityState && document.visibilityState !== 'visible') return;
+
+    const now = Date.now();
+    if (now - State.lastForegroundRefreshAt < FOREGROUND_REFRESH_COOLDOWN_MS) return;
+    State.lastForegroundRefreshAt = now;
+
+    try {
+      const { data, error } = await withTimeout(
+        State.sb.auth.getSession(),
+        AUTH_TIMEOUT_MS,
+        'รีเฟรช session นานเกินไป'
+      );
+      if (error) throw error;
+
+      if (!data.session) {
+        await hydrateSession(null, reason);
+        return;
+      }
+
+      if (!State.session || !State.dataLoaded || State.dataError) {
+        await hydrateSession(data.session, reason);
+        return;
+      }
+
+      State.session = data.session;
+      await loadAllData(false);
       render();
     } catch (error) {
-      renderFatal(`เริ่มระบบไม่สำเร็จ: ${safeError(error)}`);
+      State.dataError = `รีเฟรชข้อมูลหลังกลับมาที่แท็บไม่สำเร็จ: ${safeError(error)}`;
+      State.loading = false;
+      render();
+    }
+  }
+
+  async function refreshCurrentSession(showToast = false) {
+    if (!State.sb || needsConfig()) {
+      render();
+      return;
+    }
+
+    State.loading = true;
+    State.loadingMessage = 'กำลังรีเฟรชข้อมูล...';
+    render();
+
+    try {
+      const { data, error } = await withTimeout(
+        State.sb.auth.getSession(),
+        AUTH_TIMEOUT_MS,
+        'รีเฟรช session นานเกินไป'
+      );
+      if (error) throw error;
+
+      await hydrateSession(data.session, showToast ? 'manual-reload' : 'refresh');
+      if (showToast && data.session && !State.dataError) toast('โหลดข้อมูลล่าสุดแล้ว', 'success');
+    } catch (error) {
+      State.dataError = `รีเฟรชข้อมูลไม่สำเร็จ: ${safeError(error)}`;
+      State.loading = false;
+      render();
     }
   }
 
@@ -166,7 +323,11 @@
         await State.sb.auth.signOut();
         break;
       case 'reload':
-        await loadAllData(true);
+        await refreshCurrentSession(true);
+        break;
+      case 'retry-boot':
+        State.bootError = '';
+        initSession();
         render();
         break;
       case 'modal-close':
@@ -320,19 +481,24 @@
     location.hash = '#dashboard';
   }
 
-  async function loadProfile() {
+  async function loadProfile(seq = State.loadSeq) {
     if (!State.session?.user) {
       State.profile = null;
       return;
     }
 
     const user = State.session.user;
-    const { data, error } = await State.sb
-      .from('profiles')
-      .select('*')
-      .eq('id', user.id)
-      .maybeSingle();
+    const { data, error } = await withTimeout(
+      State.sb
+        .from('profiles')
+        .select('*')
+        .eq('id', user.id)
+        .maybeSingle(),
+      DATA_TIMEOUT_MS,
+      'โหลด profile นานเกินไป'
+    );
 
+    if (seq !== State.loadSeq) return;
     if (error) throw error;
 
     if (!data) {
@@ -343,7 +509,11 @@
         role: 'user',
         is_active: true
       };
-      const { error: insertError } = await State.sb.from('profiles').insert(fallback);
+      const { error: insertError } = await withTimeout(
+        State.sb.from('profiles').insert(fallback),
+        DATA_TIMEOUT_MS,
+        'สร้าง profile เริ่มต้นนานเกินไป'
+      );
       if (insertError) throw insertError;
       State.profile = fallback;
     } else {
@@ -356,12 +526,44 @@
     }
   }
 
-  async function loadAllData(showToast = false) {
+  async function loadAllData(showToast = false, seq = State.loadSeq) {
     if (!State.session) return;
 
+    const hadData = State.dataLoaded;
     State.loading = true;
+    State.loadingMessage = State.loadingMessage || 'กำลังโหลดข้อมูลระบบ...';
+    State.dataError = '';
+    if (showToast) render();
+
     try {
-      await State.sb.rpc('sync_demo_statuses');
+      await withTimeout(
+        State.sb.rpc('sync_demo_statuses'),
+        6000,
+        'sync status นานเกินไป'
+      ).catch((error) => {
+        console.warn('sync_demo_statuses skipped:', safeError(error));
+      });
+
+      if (seq !== State.loadSeq) return;
+
+      const responses = await withTimeout(
+        Promise.all([
+          State.sb.from('profiles').select('*').order('full_name'),
+          State.sb.from('companies').select('*').is('deleted_at', null).order('updated_at', { ascending: false }),
+          State.sb.from('demo_rounds').select('*').is('deleted_at', null).order('updated_at', { ascending: false }),
+          State.sb.from('demo_accounts').select('*').order('created_at', { ascending: true }),
+          State.sb.from('modules').select('*').order('name'),
+          State.sb.from('demo_round_modules').select('*'),
+          State.sb.from('activity_logs').select('*').is('deleted_at', null).order('created_at', { ascending: false }),
+          State.sb.from('email_logs').select('*').order('created_at', { ascending: false }).limit(250),
+          State.sb.from('email_templates').select('*').eq('is_active', true).order('template_key'),
+          State.sb.from('settings').select('*')
+        ]),
+        DATA_TIMEOUT_MS,
+        'โหลดข้อมูลหลักนานเกินไป กรุณากดรีเฟรช'
+      );
+
+      if (seq !== State.loadSeq) return;
 
       const [
         profiles,
@@ -374,20 +576,8 @@
         emailLogs,
         emailTemplates,
         settings
-      ] = await Promise.all([
-        State.sb.from('profiles').select('*').order('full_name'),
-        State.sb.from('companies').select('*').is('deleted_at', null).order('updated_at', { ascending: false }),
-        State.sb.from('demo_rounds').select('*').is('deleted_at', null).order('updated_at', { ascending: false }),
-        State.sb.from('demo_accounts').select('*').order('created_at', { ascending: true }),
-        State.sb.from('modules').select('*').order('name'),
-        State.sb.from('demo_round_modules').select('*'),
-        State.sb.from('activity_logs').select('*').is('deleted_at', null).order('created_at', { ascending: false }),
-        State.sb.from('email_logs').select('*').order('created_at', { ascending: false }).limit(250),
-        State.sb.from('email_templates').select('*').eq('is_active', true).order('template_key'),
-        State.sb.from('settings').select('*')
-      ]);
+      ] = responses;
 
-      const responses = [profiles, companies, rounds, accounts, modules, roundModules, activityLogs, emailLogs, emailTemplates, settings];
       const firstError = responses.find((res) => res.error)?.error;
       if (firstError) throw firstError;
 
@@ -403,17 +593,30 @@
       State.settings = Object.fromEntries((settings.data || []).map((row) => [row.key, row.value]));
 
       State.dataLoaded = true;
+      State.dataError = '';
       if (showToast) toast('โหลดข้อมูลล่าสุดแล้ว', 'success');
     } catch (error) {
-      toast(`โหลดข้อมูลไม่สำเร็จ: ${safeError(error)}`, 'error');
+      if (seq !== State.loadSeq) return;
+      State.dataLoaded = hadData;
+      State.dataError = safeError(error);
+      toast(`โหลดข้อมูลไม่สำเร็จ: ${State.dataError}`, 'error');
     } finally {
-      State.loading = false;
+      if (seq === State.loadSeq) {
+        State.loading = false;
+        State.loadingMessage = '';
+      }
     }
   }
 
   function render() {
     const app = $('#app');
     if (!app) return;
+
+    if (!State.authReady) {
+      app.className = 'app-loading';
+      app.innerHTML = renderBootLoading(State.loadingMessage || 'กำลังเริ่มระบบ...');
+      return;
+    }
 
     if (!State.session) {
       app.className = '';
@@ -424,6 +627,15 @@
     const route = State.currentRoute || '#dashboard';
     app.className = '';
     app.innerHTML = renderShell(route);
+  }
+
+  function renderBootLoading(message) {
+    return `
+      <div class="loading-card">
+        <div class="spinner" aria-hidden="true"></div>
+        <p>${escapeHTML(message)}</p>
+      </div>
+    `;
   }
 
   function renderFatal(message) {
@@ -452,6 +664,14 @@
             <div class="config-warning">
               ยังไม่ได้ตั้งค่า Supabase ใน <strong>script.js</strong><br>
               แก้ค่า SUPABASE_URL และ SUPABASE_ANON_KEY ก่อนใช้งานจริง
+            </div>
+          ` : ''}
+          ${State.bootError ? `
+            <div class="config-warning">
+              ${escapeHTML(State.bootError)}
+              <div style="margin-top:10px">
+                <button class="btn small ghost" type="button" data-action="retry-boot">ลองใหม่</button>
+              </div>
             </div>
           ` : ''}
           <form data-action="login" class="grid">
@@ -501,7 +721,7 @@
           </div>
         </aside>
         <main class="main">
-          ${State.loading ? '<div class="config-warning">กำลังโหลดข้อมูล...</div>' : ''}
+          ${renderLoadNotice()}
           ${renderRoute(route)}
         </main>
       </div>
@@ -513,12 +733,48 @@
     return `<a href="${hash}" class="${active ? 'active' : ''}">${escapeHTML(label)}</a>`;
   }
 
+  function renderLoadNotice() {
+    if (State.loading) {
+      return `<div class="config-warning">${escapeHTML(State.loadingMessage || 'กำลังโหลดข้อมูล...')}</div>`;
+    }
+
+    if (State.dataError && State.dataLoaded) {
+      return `
+        <div class="config-warning">
+          โหลดข้อมูลล่าสุดบางส่วนไม่สำเร็จ: ${escapeHTML(State.dataError)}
+          <div style="margin-top:10px">
+            <button class="btn small ghost" data-action="reload">ลองโหลดใหม่</button>
+          </div>
+        </div>
+      `;
+    }
+
+    return '';
+  }
+
   function renderRoute(route) {
     if (!State.dataLoaded) {
+      if (State.dataError) {
+        return `
+          <section class="loading-card error-card">
+            <h1>โหลดข้อมูลไม่สำเร็จ</h1>
+            <p>${escapeHTML(State.dataError)}</p>
+            <div class="actions" style="justify-content:center; margin-top:14px">
+              <button class="btn primary" data-action="reload">ลองโหลดใหม่</button>
+              <button class="btn ghost" data-action="logout">ออกจากระบบ</button>
+            </div>
+          </section>
+        `;
+      }
+
       return `
         <section class="loading-card">
           <div class="spinner"></div>
-          <p>กำลังโหลดข้อมูล...</p>
+          <p>${escapeHTML(State.loadingMessage || 'กำลังโหลดข้อมูล...')}</p>
+          <p class="muted small-text">ถ้าหน้านี้ค้างนาน ให้กดรีเฟรชข้อมูล</p>
+          <div class="actions" style="justify-content:center; margin-top:14px">
+            <button class="btn ghost" data-action="reload">รีเฟรชข้อมูล</button>
+          </div>
         </section>
       `;
     }
@@ -2173,6 +2429,18 @@
 
   function escapeAttr(value) {
     return escapeHTML(value).replace(/`/g, '&#096;');
+  }
+
+  function withTimeout(promise, timeoutMs, message) {
+    let timerId;
+    const timeout = new Promise((_resolve, reject) => {
+      timerId = window.setTimeout(() => reject(new Error(message || 'request timeout')), timeoutMs);
+    });
+
+    return Promise.race([
+      Promise.resolve(promise),
+      timeout
+    ]).finally(() => window.clearTimeout(timerId));
   }
 
   function safeError(error) {

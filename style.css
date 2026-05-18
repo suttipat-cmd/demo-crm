@@ -827,3 +827,14 @@ tbody tr:hover {
     border-color: #ddd;
   }
 }
+
+
+.error-card h1 {
+  margin: 0 0 10px;
+  color: var(--danger);
+  font-size: 20px;
+}
+
+.error-card p {
+  white-space: pre-wrap;
+}
