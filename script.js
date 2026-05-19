@@ -1,11 +1,11 @@
-/* DEMO CRM v1.3.1
+/* DEMO CRM v1.3.2
    Static SPA for GitHub Pages + Supabase.
    Security rule: never place service_role key, database password, or private token in this file.
 */
 (() => {
   'use strict';
 
-  const APP_VERSION = '1.3.1';
+  const APP_VERSION = '1.3.2';
   const APP_CONFIG = {
     SUPABASE_URL: 'https://hacmassihdqlgkmwoivs.supabase.co',
     SUPABASE_ANON_KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhhY21hc3NpaGRxbGdrbXdvaXZzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkxMjk1ODgsImV4cCI6MjA5NDcwNTU4OH0.TgkJCHaRndMDZY2SANXCjFLdMkHUd_bxJOb0K9Znpa8',
@@ -51,6 +51,7 @@
     sidebarCollapsed: localStorage.getItem('demo-crm:sidebar-collapsed') === 'true',
     notificationsOpen: false,
     notificationFilter: 'all',
+    notificationStates: [],
     profiles: [],
     responsiblePeople: [],
     companies: [],
@@ -358,6 +359,9 @@
         break;
       case 'notification-toggle':
         State.notificationsOpen = !State.notificationsOpen;
+        if (State.notificationsOpen) {
+          await markCurrentNotificationsRead();
+        }
         render();
         break;
       case 'notification-close':
@@ -367,6 +371,16 @@
       case 'notification-tab':
         State.notificationFilter = target.dataset.kind || 'all';
         render();
+        break;
+      case 'notification-dismiss':
+        await withButtonLoading(target, async () => {
+          await dismissNotification(target.dataset.key || '');
+        });
+        break;
+      case 'notification-clear-all':
+        await withButtonLoading(target, async () => {
+          await dismissVisibleNotifications(target.dataset.kind || 'all');
+        });
         break;
       case 'notification-filter':
         applyNotificationFilter(target.dataset.kind || 'all');
@@ -681,7 +695,8 @@
           State.sb.from('activity_logs').select('*').is('deleted_at', null).order('created_at', { ascending: false }),
           State.sb.from('email_logs').select('*').order('created_at', { ascending: false }).limit(250),
           State.sb.from('email_templates').select('*').eq('is_active', true).order('template_key'),
-          State.sb.from('settings').select('*')
+          State.sb.from('settings').select('*'),
+          State.sb.from('notification_states').select('*').eq('user_id', State.session.user.id)
         ]),
         DATA_TIMEOUT_MS,
         'โหลดข้อมูลหลักนานเกินไป กรุณากดรีเฟรช'
@@ -700,7 +715,8 @@
         activityLogs,
         emailLogs,
         emailTemplates,
-        settings
+        settings,
+        notificationStates
       ] = responses;
 
       const firstError = responses.find((res) => res.error)?.error;
@@ -717,6 +733,7 @@
       State.emailLogs = emailLogs.data || [];
       State.emailTemplates = emailTemplates.data || [];
       State.settings = Object.fromEntries((settings.data || []).map((row) => [row.key, row.value]));
+      State.notificationStates = notificationStates.data || [];
       cacheBrandLogo(State.settings.brand_logo_data_uri);
 
       State.dataLoaded = true;
@@ -861,7 +878,7 @@
     const profileName = displayName(State.profile);
     const isAdmin = userIsAdmin();
     const notifications = buildNotifications();
-    const notificationCount = notifications.length;
+    const unreadNotificationCount = countUnreadNotifications(notifications);
     const logoSrc = getBrandLogoDataUri();
 
     return `
@@ -885,7 +902,7 @@
             <div class="notification-wrap">
               <button class="icon-button notification-button ${State.notificationsOpen ? 'active' : ''}" type="button" data-action="notification-toggle" title="แจ้งเตือน" aria-label="แจ้งเตือน">
                 <span aria-hidden="true">🔔</span>
-                ${notificationCount ? `<span class="notification-badge">${notificationCount > 99 ? '99+' : notificationCount}</span>` : ''}
+                ${unreadNotificationCount ? `<span class="notification-badge">${unreadNotificationCount > 99 ? '99+' : unreadNotificationCount}</span>` : ''}
               </button>
               ${State.notificationsOpen ? renderNotificationPanel(notifications) : ''}
             </div>
@@ -1055,13 +1072,25 @@
     return typeof value === 'string' && /^data:image\/(png|jpe?g|webp);base64,/i.test(value);
   }
 
-  function buildNotifications() {
+  function buildNotifications({ includeDismissed = false } = {}) {
     if (!State.dataLoaded) return [];
 
     const rows = getDemoRows();
     const allRows = getAllDemoRows();
     const rowByRound = new Map(allRows.map((row) => [row.round.id, row]));
+    const stateMap = getNotificationStateMap();
     const notifications = [];
+
+    const attachState = (item) => {
+      const saved = stateMap.get(item.id) || {};
+      return {
+        ...item,
+        readAt: saved.read_at || null,
+        dismissedAt: saved.dismissed_at || null,
+        isRead: Boolean(saved.read_at),
+        isDismissed: Boolean(saved.dismissed_at)
+      };
+    };
 
     for (const row of rows) {
       if (!FINAL_STATUSES.has(row.effectiveStatus) && row.remainingDays >= 0 && row.remainingDays <= 7) {
@@ -1108,6 +1137,8 @@
     }
 
     return notifications
+      .map(attachState)
+      .filter((item) => includeDismissed || !item.isDismissed)
       .sort((a, b) => {
         if (a.severity !== b.severity) return a.severity - b.severity;
         return new Date(a.date || 0) - new Date(b.date || 0);
@@ -1115,10 +1146,96 @@
       .slice(0, 99);
   }
 
+  function getNotificationStateMap() {
+    return new Map((State.notificationStates || []).map((row) => [row.notification_key, row]));
+  }
+
+  function countUnreadNotifications(notifications = buildNotifications()) {
+    return notifications.filter((item) => !item.isRead && !item.isDismissed).length;
+  }
+
+  function getVisibleNotificationsByKind(kind = 'all') {
+    const notifications = buildNotifications();
+    return kind === 'all' ? notifications : notifications.filter((item) => item.kind === kind);
+  }
+
+  async function markCurrentNotificationsRead() {
+    const unread = buildNotifications().filter((item) => !item.isRead && !item.isDismissed);
+    if (!unread.length) return;
+    await saveNotificationStates(unread.map((item) => ({
+      notification_key: item.id,
+      read_at: new Date().toISOString(),
+      dismissed_at: null
+    })));
+  }
+
+  async function dismissNotification(key) {
+    if (!key) return;
+    const stateMap = getNotificationStateMap();
+    const saved = stateMap.get(key) || {};
+    const now = new Date().toISOString();
+
+    await saveNotificationStates([{
+      notification_key: key,
+      read_at: saved.read_at || now,
+      dismissed_at: now
+    }]);
+
+    render();
+  }
+
+  async function dismissVisibleNotifications(kind = 'all') {
+    const items = getVisibleNotificationsByKind(kind);
+    if (!items.length) return;
+
+    const now = new Date().toISOString();
+    await saveNotificationStates(items.map((item) => ({
+      notification_key: item.id,
+      read_at: item.readAt || now,
+      dismissed_at: now
+    })));
+
+    toast('ล้างแจ้งเตือนแล้ว', 'success');
+    render();
+  }
+
+  async function saveNotificationStates(rows) {
+    if (!State.session?.user || !rows.length) return;
+
+    const userId = State.session.user.id;
+    const now = new Date().toISOString();
+    const payload = rows.map((row) => ({
+      user_id: userId,
+      notification_key: row.notification_key,
+      read_at: row.read_at || null,
+      dismissed_at: row.dismissed_at || null,
+      updated_at: now
+    }));
+
+    const { error } = await State.sb
+      .from('notification_states')
+      .upsert(payload, { onConflict: 'user_id,notification_key' });
+    if (error) throw error;
+
+    mergeNotificationStates(payload);
+  }
+
+  function mergeNotificationStates(rows) {
+    const map = new Map((State.notificationStates || []).map((row) => [row.notification_key, row]));
+    for (const row of rows) {
+      map.set(row.notification_key, {
+        ...(map.get(row.notification_key) || {}),
+        ...row
+      });
+    }
+    State.notificationStates = Array.from(map.values());
+  }
+
   function renderNotificationPanel(notifications) {
     const nearCount = notifications.filter((item) => item.kind === 'near').length;
     const expiredCount = notifications.filter((item) => item.kind === 'expired').length;
     const emailCount = notifications.filter((item) => item.kind === 'email').length;
+    const unreadCount = countUnreadNotifications(notifications);
     const activeKind = State.notificationFilter || 'all';
     const visibleItems = activeKind === 'all'
       ? notifications
@@ -1129,8 +1246,8 @@
       <section class="notification-panel" aria-label="รายการแจ้งเตือน">
         <header class="notification-head">
           <div>
-            <strong>แจ้งเตือน (${notifications.length})</strong>
-            <p>รายการที่ควรตรวจสอบตอนนี้</p>
+            <strong>แจ้งเตือน${unreadCount ? ` (${unreadCount} ใหม่)` : ''}</strong>
+            <p>เปิดแล้วถือว่าอ่านแล้ว กด × เพื่อซ่อนรายการที่ไม่ต้องการเห็นอีก</p>
           </div>
           <button class="btn small ghost" type="button" data-action="notification-close">ปิด</button>
         </header>
@@ -1142,18 +1259,22 @@
         </div>
         <div class="notification-list">
           ${items.length ? items.map((item) => `
-            <a class="notification-item ${escapeAttr(item.kind)}" href="${escapeAttr(item.href)}">
-              <span class="notification-icon">${escapeHTML(item.icon)}</span>
-              <span class="notification-content">
-                <strong>${escapeHTML(item.title)}</strong>
-                <small>${escapeHTML(item.detail)}</small>
-              </span>
-              <span class="notification-date">${escapeHTML(item.date ? formatDate(item.date) : '-')}</span>
-            </a>
+            <div class="notification-item ${escapeAttr(item.kind)} ${item.isRead ? 'read' : 'unread'}">
+              <a class="notification-link" href="${escapeAttr(item.href)}">
+                <span class="notification-icon">${escapeHTML(item.icon)}</span>
+                <span class="notification-content">
+                  <strong>${escapeHTML(item.title)}</strong>
+                  <small>${escapeHTML(item.detail)}</small>
+                </span>
+                <span class="notification-date">${escapeHTML(item.date ? formatDate(item.date) : '-')}</span>
+              </a>
+              <button class="notification-dismiss" type="button" data-action="notification-dismiss" data-key="${escapeAttr(item.id)}" title="ปิดแจ้งเตือนนี้" aria-label="ปิดแจ้งเตือนนี้">×</button>
+            </div>
           `).join('') : '<div class="empty compact-empty">ไม่มีแจ้งเตือนในหมวดนี้</div>'}
         </div>
         <footer class="notification-footer">
           <button class="btn small secondary" type="button" data-action="notification-filter" data-kind="${escapeAttr(activeKind)}">ดูในรายการเดโม</button>
+          <button class="btn small ghost" type="button" data-action="notification-clear-all" data-kind="${escapeAttr(activeKind)}" ${visibleItems.length ? '' : 'disabled'}>ล้างทั้งหมด</button>
         </footer>
       </section>
     `;
