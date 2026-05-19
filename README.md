@@ -4,9 +4,9 @@ DEMO CRM สำหรับทีม CS ใช้จัดการบริษ�
 
 ## Version
 
-- Current: `v1.2.8`
-- Type: Report Presentation + Google Apps Script Email
-- SQL required: ไม่ต้องรัน SQL เพิ่ม
+- Current: `v1.2.9`
+- Type: Stabilization Release
+- SQL required: `supabase/009_v1_2_9_activity_log_source.sql`
 
 ## Files
 
@@ -17,147 +17,124 @@ script.js
 README.md
 apps-script/
   Code.gs
+supabase/
+  009_v1_2_9_activity_log_source.sql
+  reset_transaction_data_keep_masters.sql
 ```
 
-## สิ่งที่เปลี่ยนใน v1.2.8
+## สิ่งที่ปรับใน v1.2.9
 
-- ปรับหน้า **รายงาน** ให้เหมาะกับการเปิดนำเสนอมากขึ้น
-- ลดการแสดงข้อมูลแบบตารางยาว ๆ แล้วเปลี่ยนเป็น:
-  - hero summary
-  - metric cards
-  - บันทึกล่าสุดที่ควรติดตาม
-  - รายการที่ต้องดูแล
-  - card สรุปรายบริษัท
-- ยังแสดง 1 บริษัท = 1 record และเรียงตามบันทึกล่าสุด
-- เพิ่ม Google Apps Script สำหรับส่งอีเมลจริงผ่าน Gmail/Google Workspace
-- Web app ส่ง `email_log_id` พร้อม Supabase access token ไป Apps Script
-- Apps Script validate session กับ Supabase Auth ก่อนอ่าน email log
-- ไม่ใช้ `service_role key` ใน frontend หรือ Apps Script
+- ใช้ base จาก v1.2.8 และแก้แบบ stabilization เพื่อไม่ให้ regression
+- sync version/cache เป็น v1.2.9 ทุกจุด
+- คงหน้า Login redesign, Branding/Logo, Favicon, Notification และหน้า Report จากรุ่นก่อนหน้า
+- คง Apps Script email sender ไว้ใน package
+- แยก `activity_logs.source` เป็น `manual/system`
+- บันทึกความคืบหน้าและรายงานแสดงเฉพาะ log ที่ user พิมพ์เอง
+- วันที่/เวลาในระบบและอีเมลใช้รูปแบบ `dd/mm/yyyy` หรือ `dd/mm/yyyy hh:mm` โดยใช้ปี ค.ศ.
+- user ส่งอีเมลแจ้งข้อมูล demo ได้ 1 ครั้งต่อ demo round
+- admin ส่งซ้ำได้
+- เพิ่ม loading/disabled ให้ action สำคัญเพิ่มเติมเพื่อลดการกดซ้ำ
+- แนบ SQL reset สำหรับล้างข้อมูลทดสอบโดยเก็บ master data
 
-## ตั้งค่า Google Apps Script
+## วิธีติดตั้ง / Deploy
 
-1. ไปที่ Google Apps Script แล้วสร้าง project ใหม่
-2. คัดลอกโค้ดจาก `apps-script/Code.gs` ไปวาง
-3. ไปที่ **Project Settings → Script properties**
-4. เพิ่มค่า:
+1. รัน SQL migration ใน Supabase SQL Editor:
 
 ```txt
-SUPABASE_URL=https://YOUR_PROJECT.supabase.co
-SUPABASE_ANON_KEY=YOUR_SUPABASE_ANON_KEY
-SENDER_NAME=DEMO CRM
+supabase/009_v1_2_9_activity_log_source.sql
 ```
 
-5. Deploy เป็น Web App:
-   - Execute as: `Me`
-   - Who has access: `Anyone`
-6. Copy Web App URL
-7. กลับไปที่ DEMO CRM:
-   - ตั้งค่าระบบ → การตั้งค่า
-   - วาง URL ในช่อง Google Apps Script Web App URL
-   - กดบันทึก
+2. แทนที่ไฟล์ใน GitHub repo ด้วยไฟล์ชุดนี้
 
-## Email flow
-
-```txt
-User กดส่งอีเมล
-→ Web app สร้าง email_logs เป็น queued
-→ Web app เรียก Apps Script พร้อม email_log_id + Supabase access token
-→ Apps Script ตรวจ token กับ Supabase Auth
-→ Apps Script อ่าน email_logs ผ่าน RLS
-→ Apps Script ส่ง Gmail
-→ Apps Script อัปเดต email_logs เป็น sent/error
-→ Web app โหลดข้อมูลใหม่
-```
-
-## Production readiness checklist
-
-ก่อนส่งให้ user ใช้งานจริง ควรตรวจรายการนี้อย่างน้อย 1 รอบ:
-
-### Auth / Role
-
-- [ ] Admin login ได้
-- [ ] User login ได้
-- [ ] User เข้าเมนูตั้งค่าระบบไม่ได้
-- [ ] User ที่ถูกปิดใช้งาน login แล้วถูก sign out
-- [ ] Logout แล้ว session ถูกล้างจริง
-
-### Permission / RLS
-
-- [ ] ตาราง `companies` เปิด RLS และ user ที่ login อ่าน/เพิ่ม/แก้ได้ตาม policy
-- [ ] ตาราง `demo_rounds` เปิด RLS และ policy ตรงกับ flow สร้าง/แก้/ต่ออายุ
-- [ ] ตาราง `demo_accounts` เปิด RLS และไม่อ่านได้จาก user ที่ไม่ได้ login
-- [ ] ตาราง `activity_logs` เปิด RLS และแก้/ลบได้เฉพาะ log ล่าสุดตาม rule
-- [ ] ตาราง `email_logs` เปิด RLS และ Apps Script อ่าน/อัปเดตได้ด้วย user token
-- [ ] ตาราง `modules`, `responsible_people`, `settings`, `email_templates` มี policy ตาม role
-
-### Core flow
-
-- [ ] สร้าง demo ใหม่ได้
-- [ ] เพิ่ม contact email หลายรายการได้
-- [ ] เพิ่ม demo account หลายบัญชีได้
-- [ ] เลือกโมดูลหลายรายการได้
-- [ ] เพิ่มบันทึกความคืบหน้าได้
-- [ ] หน้า detail แสดง timeline และประวัติรอบ demo ได้
-- [ ] ต่ออายุแล้วรายการเดโมยังแสดง 1 บริษัท = 1 record ล่าสุด
-- [ ] รอบเก่าถูกเปลี่ยนเป็น `ปิดรายการ`
-- [ ] รายงานแสดงบันทึกล่าสุดของแต่ละบริษัทถูกต้อง
-
-### Email
-
-- [ ] Preview email ถูกต้อง
-- [ ] Apps Script endpoint ถูกตั้งค่าแล้ว
-- [ ] ส่งอีเมลครั้งแรกได้จริง
-- [ ] Email error/queued แสดงใน notification
-- [ ] Reminder 3 วันทำงานตามที่ต้องการ
-
-### Security / Repo
-
-- [ ] ไม่มี `service_role key` ใน frontend
-- [ ] ไม่มี database password ใน repo
-- [ ] ไม่มี GitHub token หรือ Apps Script secret ใน repo
-- [ ] Repo public ต้องยอมรับได้ว่า anon key และ frontend code มองเห็นได้
-- [ ] Backup Supabase ก่อนเปิดใช้งานจริง
-
-## Deploy
+3. Push ขึ้น GitHub:
 
 ```bash
 git add .
-git commit -m "Release v1.2.8 report presentation and email script"
+git commit -m "Release v1.2.9 stabilization"
 git push
 ```
 
-หลัง deploy ให้ hard refresh:
+4. หลัง GitHub Pages deploy เสร็จ ให้ hard refresh:
 
 ```txt
 Mac: Cmd + Shift + R
 Windows: Ctrl + F5
 ```
 
+## Google Apps Script Email
+
+ใช้ไฟล์:
+
+```txt
+apps-script/Code.gs
+```
+
+ตั้งค่า Script Properties:
+
+```txt
+SUPABASE_URL = https://your-project.supabase.co
+SUPABASE_ANON_KEY = anon public key
+SENDER_NAME = DEMO CRM
+```
+
+Deploy เป็น Web App:
+
+```txt
+Execute as: Me
+Who has access: Anyone
+```
+
+นำ Web App URL ไปใส่ใน:
+
+```txt
+ตั้งค่าระบบ → การตั้งค่า → Google Apps Script Web App URL
+```
+
+ห้ามใส่ `service_role key`, database password หรือ secret ใด ๆ ใน frontend หรือ repo
+
+## SQL ล้างข้อมูลทดสอบ
+
+ใช้ไฟล์นี้เฉพาะตอนต้องการล้างข้อมูลเดโมก่อนเริ่มใช้งานจริง:
+
+```txt
+supabase/reset_transaction_data_keep_masters.sql
+```
+
+ไฟล์นี้จะล้าง:
+- companies
+- demo_rounds
+- demo_accounts
+- demo_round_modules
+- activity_logs
+- email_logs
+
+และจะเก็บ:
+- users / profiles
+- responsible_people
+- modules
+- email_templates
+- settings / logo / fixed CC
+
+ควร backup database ก่อนรันจริง
+
+## Checklist ก่อนส่ง user ใช้งานจริง
+
+- [ ] Login / Logout ใช้งานได้
+- [ ] Admin เข้าเมนูตั้งค่าระบบได้
+- [ ] User เข้าเมนูตั้งค่าระบบไม่ได้
+- [ ] สร้างเดโมพร้อมหลายอีเมลและหลายบัญชีเดโมได้
+- [ ] ต่ออายุแล้วรายการหลักยังแสดง 1 บริษัท = 1 record ล่าสุด
+- [ ] บันทึกความคืบหน้าแสดงเฉพาะ log ที่ user พิมพ์เอง
+- [ ] วันที่ทุกจุดเป็น `dd/mm/yyyy` หรือ `dd/mm/yyyy hh:mm`
+- [ ] User ส่งอีเมลแจ้งข้อมูล demo ได้ครั้งเดียว
+- [ ] Admin ส่งอีเมลซ้ำได้
+- [ ] Apps Script ส่งอีเมลจริงได้
+- [ ] Notification badge/popup แสดงข้อมูลถูกต้อง
+- [ ] หน้า Report แสดงสรุปรายบริษัทถูกต้อง
+- [ ] Export รายงานทำงานได้
+- [ ] RLS เปิดครบทุก table
+- [ ] ไม่มี service_role key / database password / secret ใน repo
+
 ## Rollback
 
-ถ้า deploy แล้วมีปัญหา ให้ revert commit ล่าสุด หรืออัปโหลดไฟล์จาก ZIP version ก่อนหน้า
-
-```bash
-git revert HEAD
-git push
-```
-
-
-## Release v1.2.8 - Regression Recovery
-
-เวอร์ชันนี้ใช้ **v1.2.6 เป็น base หลัก** แล้ว patch เฉพาะ requirement ใหม่ เพื่อไม่ให้เกิด regression ซ้ำ
-
-สิ่งที่เปลี่ยน:
-- รักษา Login redesign, branding, notification, Apps Script และ design system จาก v1.2.6
-- เพิ่ม `activity_logs.source` เพื่อแยกบันทึกที่ user พิมพ์เอง (`manual`) ออกจาก system log (`system`)
-- Timeline / บันทึกล่าสุด / รายงาน แสดงเฉพาะ manual log
-- วันที่ทุกจุดใช้ `dd/mm/yyyy` และวันที่พร้อมเวลาใช้ `dd/mm/yyyy hh:mm` โดยใช้ปี ค.ศ.
-- User ส่งอีเมลแจ้งข้อมูลเดโมครั้งแรกได้ 1 ครั้งต่อ demo round; admin ส่งซ้ำได้
-- ปุ่มส่งอีเมลมี loading/disabled เพื่อกันกดซ้ำ
-- หน้า “รายงาน” เหลือเฉพาะ “สรุปรายบริษัท”
-- คงไฟล์ `apps-script/Code.gs` ไว้ใน package
-
-SQL ที่ต้องรัน:
-```txt
-supabase/008_v1_2_8_activity_log_source.sql
-```
+ถ้า deploy แล้วมีปัญหา ให้ revert commit ล่าสุดหรือกลับไปใช้ ZIP เวอร์ชันก่อนหน้า แล้ว hard refresh browser หลัง GitHub Pages deploy เสร็จ

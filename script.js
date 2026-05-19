@@ -1,11 +1,11 @@
-/* DEMO CRM v1.2.8
+/* DEMO CRM v1.2.9
    Static SPA for GitHub Pages + Supabase.
    Security rule: never place service_role key, database password, or private token in this file.
 */
 (() => {
   'use strict';
 
-  const APP_VERSION = '1.2.8';
+  const APP_VERSION = '1.2.9';
   const APP_CONFIG = {
     SUPABASE_URL: 'https://hacmassihdqlgkmwoivs.supabase.co',
     SUPABASE_ANON_KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhhY21hc3NpaGRxbGdrbXdvaXZzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkxMjk1ODgsImV4cCI6MjA5NDcwNTU4OH0.TgkJCHaRndMDZY2SANXCjFLdMkHUd_bxJOb0K9Znpa8',
@@ -341,7 +341,9 @@
         await State.sb.auth.signOut();
         break;
       case 'reload':
-        await refreshCurrentSession(true);
+        await withButtonLoading(target, async () => {
+          await refreshCurrentSession(true);
+        });
         break;
       case 'retry-boot':
         State.bootError = '';
@@ -369,7 +371,9 @@
         applyNotificationFilter(target.dataset.kind || 'all');
         break;
       case 'brand-logo-reset':
-        await resetBrandLogo();
+        await withButtonLoading(target, async () => {
+          await resetBrandLogo();
+        });
         break;
       case 'modal-close':
         closeModal();
@@ -392,7 +396,9 @@
         await copyText(target.dataset.copy || '');
         break;
       case 'demo-delete':
-        await softDeleteDemo(target.dataset.id);
+        await withButtonLoading(target, async () => {
+          await softDeleteDemo(target.dataset.id);
+        });
         break;
       case 'email-preview':
         openEmailPreview(target.dataset.id, target.dataset.type || 'first_demo_email');
@@ -403,10 +409,14 @@
         });
         break;
       case 'log-edit':
-        await editLog(target.dataset.id);
+        await withButtonLoading(target, async () => {
+          await editLog(target.dataset.id);
+        });
         break;
       case 'log-delete':
-        await deleteLog(target.dataset.id);
+        await withButtonLoading(target, async () => {
+          await deleteLog(target.dataset.id);
+        });
         break;
       case 'report-export':
         exportDemoRows();
@@ -423,22 +433,34 @@
         render();
         break;
       case 'admin-responsible-toggle':
-        await toggleResponsiblePerson(target.dataset.id, target.dataset.active === 'true');
+        await withButtonLoading(target, async () => {
+          await toggleResponsiblePerson(target.dataset.id, target.dataset.active === 'true');
+        });
         break;
       case 'admin-responsible-delete':
-        await deleteResponsiblePerson(target.dataset.id);
+        await withButtonLoading(target, async () => {
+          await deleteResponsiblePerson(target.dataset.id);
+        });
         break;
       case 'admin-module-toggle':
-        await toggleModule(target.dataset.id, target.dataset.active === 'true');
+        await withButtonLoading(target, async () => {
+          await toggleModule(target.dataset.id, target.dataset.active === 'true');
+        });
         break;
       case 'admin-module-delete':
-        await deleteModule(target.dataset.id);
+        await withButtonLoading(target, async () => {
+          await deleteModule(target.dataset.id);
+        });
         break;
       case 'admin-template-reset':
-        await resetTemplate(target.dataset.key);
+        await withButtonLoading(target, async () => {
+          await resetTemplate(target.dataset.key);
+        });
         break;
       case 'run-reminder-check':
-        await queueReminderEmails();
+        await withButtonLoading(target, async () => {
+          await queueReminderEmails();
+        });
         break;
       case 'draft-clear':
         clearDemoDraft(target.dataset.draftKey || '');
