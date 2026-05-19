@@ -1,11 +1,11 @@
-/* DEMO CRM v1.2.3
+/* DEMO CRM v1.2.4
    Static SPA for GitHub Pages + Supabase.
    Security rule: never place service_role key, database password, or private token in this file.
 */
 (() => {
   'use strict';
 
-  const APP_VERSION = '1.2.3';
+  const APP_VERSION = '1.2.4';
   const APP_CONFIG = {
     SUPABASE_URL: 'https://hacmassihdqlgkmwoivs.supabase.co',
     SUPABASE_ANON_KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhhY21hc3NpaGRxbGdrbXdvaXZzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkxMjk1ODgsImV4cCI6MjA5NDcwNTU4OH0.TgkJCHaRndMDZY2SANXCjFLdMkHUd_bxJOb0K9Znpa8',
@@ -1589,19 +1589,30 @@
         <div class="card">
           <div class="section-title"><h2>ประวัติรอบเดโม</h2></div>
           ${history.length ? `
-            <div class="timeline">
-              ${history.map((item) => `
-                <div class="timeline-item">
-                  <div class="timeline-date">${formatDate(item.round.created_at)}</div>
-                  <div class="timeline-body">
-                    <strong>${statusBadge(item.effectiveStatus)} ต่ออายุครั้งที่ ${item.round.renewal_no || 0}</strong>
-                    <p>${formatDate(item.round.start_date)} - ${formatDate(item.round.end_date)} · ${item.modules.map((module) => escapeHTML(module.name)).join(', ')}</p>
-                    <a class="btn small ghost" href="#demos/${item.round.id}">ดูรอบนี้</a>
+            <div class="timeline round-history">
+              ${history.map((item) => {
+                const isCurrentRound = item.round.id === row.round.id;
+                return `
+                  <div class="timeline-item round-history-item ${isCurrentRound ? 'current-round' : ''}">
+                    <div class="timeline-date">
+                      <span class="timeline-dot" aria-hidden="true"></span>
+                      <span>${formatDate(item.round.created_at)}</span>
+                    </div>
+                    <div class="timeline-body round-card">
+                      <div class="round-card-head">
+                        <div class="round-title">
+                          ${statusBadge(item.effectiveStatus)}
+                          <strong>ต่ออายุครั้งที่ ${item.round.renewal_no || 0}</strong>
+                        </div>
+                        <a class="btn small ghost round-link" href="#demos/${item.round.id}" aria-label="ดูรอบเดโมนี้">ดูรอบนี้</a>
+                      </div>
+                      <p class="round-meta">${formatDate(item.round.start_date)} - ${formatDate(item.round.end_date)} · ${item.modules.map((module) => escapeHTML(module.name)).join(', ') || '-'}</p>
+                    </div>
                   </div>
-                </div>
-              `).join('')}
+                `;
+              }).join('')}
             </div>
-          ` : '<div class="empty">ไม่มีประวัติ</div>'}
+          ` : '<div class="empty soft-empty">ยังไม่มีประวัติรอบเดโม</div>'}
         </div>
       </section>
 
@@ -1641,11 +1652,11 @@
   }
 
   function renderTimeline(logs) {
-    if (!logs.length) return '<div class="empty">ยังไม่มีบันทึก</div>';
+    if (!logs.length) return '<div class="empty soft-empty">ยังไม่มีบันทึกความคืบหน้า</div>';
 
     const latestId = logs[0]?.id;
     return `
-      <div class="timeline">
+      <div class="timeline activity-timeline">
         ${logs.map((log) => {
           const author = findProfile(log.created_by);
           const canEdit = canModifyLog(log, latestId);
