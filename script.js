@@ -1,11 +1,11 @@
-/* Demo CRM v1.1.0
+/* Demo CRM v1.1.1
    Static SPA for GitHub Pages + Supabase.
    Security rule: never place service_role key, database password, or private token in this file.
 */
 (() => {
   'use strict';
 
-  const APP_VERSION = '1.1.0';
+  const APP_VERSION = '1.1.1';
   const APP_CONFIG = {
     SUPABASE_URL: 'https://hacmassihdqlgkmwoivs.supabase.co',
     SUPABASE_ANON_KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhhY21hc3NpaGRxbGdrbXdvaXZzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkxMjk1ODgsImV4cCI6MjA5NDcwNTU4OH0.TgkJCHaRndMDZY2SANXCjFLdMkHUd_bxJOb0K9Znpa8',
@@ -364,11 +364,12 @@
       case 'log-delete':
         await deleteLog(target.dataset.id);
         break;
-      case 'export-current':
-        exportDemoRows(false);
+      case 'report-export':
+        exportDemoRows();
         break;
+      case 'export-current':
       case 'export-all':
-        exportDemoRows(true);
+        exportDemoRows();
         break;
       case 'admin-tab':
         State.adminTab = target.dataset.tab || 'users';
@@ -755,7 +756,13 @@
 
   function navLink(hash, label, route) {
     const active = route === hash || (hash === '#demos' && route.startsWith('#demos/') && route !== '#demos/new');
-    return `<a href="${hash}" class="${active ? 'active' : ''}" title="${escapeAttr(label)}"><span class="nav-full">${escapeHTML(label)}</span><span class="nav-short">${escapeHTML(label.slice(0, 1))}</span></a>`;
+    const icons = {
+      '#dashboard': 'ด',
+      '#demos': 'ร',
+      '#demos/new': '+',
+      '#admin': '⚙'
+    };
+    return `<a href="${hash}" class="${active ? 'active' : ''}" title="${escapeAttr(label)}"><span class="nav-icon">${escapeHTML(icons[hash] || label.slice(0, 1))}</span><span class="nav-label">${escapeHTML(label)}</span></a>`;
   }
 
   function renderLoadNotice() {
@@ -883,11 +890,11 @@
       <section class="grid two content-gap">
         <div class="card">
           <div class="section-title"><h2>จำนวนตามสถานะ</h2></div>
-          ${barChart(counts)}
+          ${barChart(counts, rows.length)}
         </div>
         <div class="card">
           <div class="section-title"><h2>จำนวนตามโมดูล</h2></div>
-          ${barChart(countByModule(rows))}
+          ${barChart(countByModule(rows), rows.length)}
         </div>
       </section>
 
@@ -948,8 +955,7 @@
     return `
       ${renderTopbar('รายการเดโม', '', `
         <a class="btn primary" href="#demos/new">+ สร้างเดโม</a>
-        <button class="btn secondary" data-action="export-current">ส่งออกผลลัพธ์</button>
-        <button class="btn ghost" data-action="export-all">ส่งออกทั้งหมด</button>
+        <button class="btn secondary" data-action="report-export">ดึงรายงาน</button>
       `)}
       <section class="card">
         <div class="filters">
@@ -1231,7 +1237,7 @@
       .filter((log) => log.company_id === row.company.id)
       .sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
 
-    const history = getDemoRows()
+    const history = getAllDemoRows()
       .filter((item) => item.company.id === row.company.id)
       .sort((a, b) => new Date(b.round.created_at || 0) - new Date(a.round.created_at || 0));
 
@@ -2125,7 +2131,7 @@
     toast('บันทึกการตั้งค่าแล้ว', 'success');
   }
 
-  function getDemoRows() {
+  function getAllDemoRows() {
     return State.rounds
       .map((round) => {
         const company = State.companies.find((item) => item.id === round.company_id);
@@ -2158,6 +2164,33 @@
         };
       })
       .filter(Boolean);
+  }
+
+  function getDemoRows() {
+    const latestByCompany = new Map();
+
+    for (const row of getAllDemoRows()) {
+      const current = latestByCompany.get(row.company.id);
+      if (!current || compareRoundLatest(row, current) < 0) {
+        latestByCompany.set(row.company.id, row);
+      }
+    }
+
+    return [...latestByCompany.values()];
+  }
+
+  function compareRoundLatest(a, b) {
+    const dateA = new Date(a.round.created_at || a.round.updated_at || a.round.start_date || 0).getTime();
+    const dateB = new Date(b.round.created_at || b.round.updated_at || b.round.start_date || 0).getTime();
+    if (dateA !== dateB) return dateB - dateA;
+
+    const renewalA = Number(a.round.renewal_no || 0);
+    const renewalB = Number(b.round.renewal_no || 0);
+    if (renewalA !== renewalB) return renewalB - renewalA;
+
+    const endA = new Date(`${a.round.end_date || '1970-01-01'}T00:00:00`).getTime();
+    const endB = new Date(`${b.round.end_date || '1970-01-01'}T00:00:00`).getTime();
+    return endB - endA;
   }
 
   function getFilteredRows() {
@@ -2213,7 +2246,7 @@
   }
 
   function getDemoRow(roundId) {
-    return getDemoRows().find((row) => row.round.id === roundId);
+    return getAllDemoRows().find((row) => row.round.id === roundId);
   }
 
   function countByStatus(rows) {
@@ -2234,26 +2267,37 @@
     return counts;
   }
 
-  function barChart(counts) {
+  function barChart(counts, totalCount = 0) {
     const entries = Object.entries(counts || {}).sort((a, b) => b[1] - a[1]);
     if (!entries.length) return '<div class="empty">ไม่มีข้อมูล</div>';
 
-    const max = Math.max(...entries.map(([, value]) => value), 1);
+    const denominator = Math.max(Number(totalCount) || 0, 1);
     return `
       <div class="bar-list" style="margin-top:14px">
-        ${entries.map(([label, value]) => `
-          <div class="bar-row">
-            <div>${escapeHTML(label)}</div>
-            <div class="bar-track"><div class="bar-fill" style="--w:${Math.round((value / max) * 100)}%"></div></div>
-            <strong>${value}</strong>
-          </div>
-        `).join('')}
+        ${entries.map(([label, value]) => {
+          const percent = Math.max(0, Math.min(100, Math.round((Number(value || 0) / denominator) * 100)));
+          return `
+            <div class="bar-row">
+              <div class="bar-label" title="${escapeAttr(label)}">${escapeHTML(label)}</div>
+              <div class="bar-track" title="${value} จาก ${denominator}">
+                <div class="bar-fill" style="--w:${percent}%"></div>
+              </div>
+              <strong>${value}</strong>
+            </div>
+          `;
+        }).join('')}
       </div>
     `;
   }
 
-  function exportDemoRows(all) {
-    const rows = all ? getDemoRows() : getFilteredRows();
+  function exportDemoRows(forceAll = false) {
+    const filtered = hasActiveDemoFilters();
+    const rows = forceAll
+      ? getDemoRows()
+      : filtered
+        ? getFilteredRows()
+        : sortRows(getDemoRows(), State.filters.sort);
+
     const data = rows.map((row) => ({
       'ชื่อบริษัท': row.company.company_name,
       'ชื่อผู้ติดต่อ': row.company.contact_name,
@@ -2274,7 +2318,7 @@
       'บันทึกล่าสุด': row.latestLog?.message || ''
     }));
 
-    const filename = `demo-crm-${all ? 'all' : 'filtered'}-${todayISO()}.xlsx`;
+    const filename = `demo-crm-report-${filtered ? 'filtered' : 'all'}-${todayISO()}.xlsx`;
 
     if (window.XLSX) {
       const wb = window.XLSX.utils.book_new();
@@ -2285,6 +2329,16 @@
     }
 
     downloadText(filename.replace('.xlsx', '.csv'), toCSV(data), 'text/csv;charset=utf-8');
+  }
+
+  function hasActiveDemoFilters() {
+    return Boolean(
+      normalize(State.filters.search) ||
+      State.filters.status ||
+      State.filters.responsible ||
+      State.filters.module ||
+      State.filters.nearOnly
+    );
   }
 
   function toCSV(rows) {
