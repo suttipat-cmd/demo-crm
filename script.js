@@ -1,11 +1,11 @@
-/* Demo CRM v1.1.1
+/* Demo CRM v1.1.2
    Static SPA for GitHub Pages + Supabase.
    Security rule: never place service_role key, database password, or private token in this file.
 */
 (() => {
   'use strict';
 
-  const APP_VERSION = '1.1.1';
+  const APP_VERSION = '1.1.2';
   const APP_CONFIG = {
     SUPABASE_URL: 'https://hacmassihdqlgkmwoivs.supabase.co',
     SUPABASE_ANON_KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhhY21hc3NpaGRxbGdrbXdvaXZzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkxMjk1ODgsImV4cCI6MjA5NDcwNTU4OH0.TgkJCHaRndMDZY2SANXCjFLdMkHUd_bxJOb0K9Znpa8',
@@ -27,6 +27,8 @@
   const FINAL_STATUSES = new Set([STATUS.CLOSED, STATUS.CUSTOMER]);
   const DEFAULT_LOG_TYPE = 'หมายเหตุทั่วไป';
   const DEMO_DRAFT_PREFIX = 'demo-crm:v1.1.0:demo-draft:';
+  const DASHBOARD_TABLE_PAGE_SIZE = 10;
+  const DEMO_LIST_PAGE_SIZE = 20;
 
   const State = {
     sb: null,
@@ -62,6 +64,13 @@
       nearOnly: false
     },
     dashboardRange: defaultMonthRange(),
+    dashboardPages: {
+      near7: 1,
+      expired: 1,
+      latest: 1,
+      customers: 1
+    },
+    demoPage: 1,
     adminTab: 'users'
   };
 
@@ -381,6 +390,9 @@
       case 'admin-module-toggle':
         await toggleModule(target.dataset.id, target.dataset.active === 'true');
         break;
+      case 'admin-module-delete':
+        await deleteModule(target.dataset.id);
+        break;
       case 'admin-template-reset':
         await resetTemplate(target.dataset.key);
         break;
@@ -391,6 +403,9 @@
         clearDemoDraft(target.dataset.draftKey || '');
         render();
         toast('ล้างข้อมูลร่างแล้ว', 'success');
+        break;
+      case 'page-change':
+        changePage(target);
         break;
       case 'print':
         window.print();
@@ -414,12 +429,14 @@
       } else {
         State.filters[key] = target.value;
       }
+      State.demoPage = 1;
       render();
       return;
     }
 
     if (target.matches('[data-dashboard-range]')) {
       State.dashboardRange[target.dataset.dashboardRange] = target.value;
+      resetDashboardPages();
       render();
       return;
     }
@@ -841,8 +858,12 @@
     const end = State.dashboardRange.end;
     const rows = getDemoRows().filter((row) => dateInRange(row.round.created_at?.slice(0, 10), start, end));
     const allRows = getDemoRows();
+    const chartRows = allRows;
 
     const counts = countByStatus(rows);
+    const chartStatusCounts = countByStatus(chartRows);
+    const chartModuleCounts = countByModule(chartRows);
+    const chartTotal = chartRows.length;
     const near7 = allRows
       .filter((row) => !FINAL_STATUSES.has(row.effectiveStatus) && row.remainingDays >= 0 && row.remainingDays <= 7)
       .sort((a, b) => a.remainingDays - b.remainingDays);
@@ -852,13 +873,11 @@
       .sort((a, b) => a.remainingDays - b.remainingDays);
 
     const latest = [...allRows]
-      .sort((a, b) => new Date(b.round.created_at || 0) - new Date(a.round.created_at || 0))
-      .slice(0, 8);
+      .sort((a, b) => new Date(b.round.created_at || 0) - new Date(a.round.created_at || 0));
 
     const customers = allRows
       .filter((row) => row.effectiveStatus === STATUS.CUSTOMER)
-      .sort((a, b) => new Date(b.round.updated_at || 0) - new Date(a.round.updated_at || 0))
-      .slice(0, 8);
+      .sort((a, b) => new Date(b.round.updated_at || 0) - new Date(a.round.updated_at || 0));
 
     return `
       ${renderTopbar('แดชบอร์ด', '', `
@@ -890,19 +909,19 @@
       <section class="grid two content-gap">
         <div class="card">
           <div class="section-title"><h2>จำนวนตามสถานะ</h2></div>
-          ${barChart(counts, rows.length)}
+          ${barChart(chartStatusCounts, chartTotal)}
         </div>
         <div class="card">
           <div class="section-title"><h2>จำนวนตามโมดูล</h2></div>
-          ${barChart(countByModule(rows), rows.length)}
+          ${barChart(chartModuleCounts, chartTotal)}
         </div>
       </section>
 
       <section class="grid two content-gap">
-        ${miniTable('ใกล้หมดอายุภายใน 7 วัน', near7.slice(0, 10), true)}
-        ${miniTable('หมดอายุแต่ยังไม่ปิดรายการ', expired.slice(0, 10), true)}
-        ${miniTable('รายการล่าสุด', latest, false)}
-        ${miniTable('เป็นลูกค้าแล้วล่าสุด', customers, false)}
+        ${miniTable('ใกล้หมดอายุภายใน 7 วัน', near7, true, 'near7')}
+        ${miniTable('หมดอายุแต่ยังไม่ปิดรายการ', expired, true, 'expired')}
+        ${miniTable('รายการล่าสุด', latest, false, 'latest')}
+        ${miniTable('เป็นลูกค้าแล้วล่าสุด', customers, false, 'customers')}
       </section>
     `;
   }
@@ -917,33 +936,41 @@
     `;
   }
 
-  function miniTable(title, rows, showDays) {
+  function miniTable(title, rows, showDays, pageKey) {
+    const pageInfo = paginateRows(rows, State.dashboardPages[pageKey] || 1, DASHBOARD_TABLE_PAGE_SIZE);
+    State.dashboardPages[pageKey] = pageInfo.page;
+    const pageRows = pageInfo.rows;
+
     return `
       <div class="card">
-        <div class="section-title"><h2>${escapeHTML(title)}</h2></div>
-        ${rows.length ? `
-          <div class="table-wrap" style="margin-top:12px">
+        <div class="section-title">
+          <h2>${escapeHTML(title)}</h2>
+          <span class="muted small-text">${rows.length.toLocaleString('th-TH')} รายการ</span>
+        </div>
+        ${pageRows.length ? `
+          <div class="table-wrap compact-table" style="margin-top:12px">
             <table>
               <thead>
                 <tr>
                   <th>บริษัท</th>
                   <th>สถานะ</th>
                   <th>${showDays ? 'วันคงเหลือ' : 'ผู้รับผิดชอบ'}</th>
-                  <th>โน๊ตล่าสุด</th>
+                  <th>บันทึกล่าสุด</th>
                 </tr>
               </thead>
               <tbody>
-                ${rows.map((row) => `
+                ${pageRows.map((row) => `
                   <tr>
                     <td><a href="#demos/${row.round.id}"><strong>${escapeHTML(row.company.company_name)}</strong></a></td>
                     <td>${statusBadge(row.effectiveStatus)}</td>
                     <td>${showDays ? formatRemaining(row.remainingDays) : escapeHTML(displayName(row.responsible))}</td>
-                    <td>${escapeHTML(row.latestLog?.message || '-')}</td>
+                    <td class="cell-ellipsis" title="${escapeAttr(row.latestLog?.message || '-')}">${escapeHTML(row.latestLog?.message || '-')}</td>
                   </tr>
                 `).join('')}
               </tbody>
             </table>
           </div>
+          ${renderPagination('dashboard', pageKey, pageInfo.page, pageInfo.totalPages, rows.length)}
         ` : '<div class="empty">ไม่มีข้อมูล</div>'}
       </div>
     `;
@@ -951,6 +978,8 @@
 
   function renderDemoList() {
     const rows = getFilteredRows();
+    const pageInfo = paginateRows(rows, State.demoPage, DEMO_LIST_PAGE_SIZE);
+    State.demoPage = pageInfo.page;
 
     return `
       ${renderTopbar('รายการเดโม', '', `
@@ -1001,7 +1030,8 @@
             ใกล้หมดอายุ 7 วัน
           </label>
         </div>
-        ${renderDemoTable(rows)}
+        ${renderDemoTable(pageInfo.rows)}
+        ${renderPagination('demo', 'list', pageInfo.page, pageInfo.totalPages, rows.length)}
       </section>
     `;
   }
@@ -1401,7 +1431,8 @@
               <th>ชื่อที่แสดง</th>
               <th>สิทธิ์</th>
               <th>สถานะ</th>
-              <th>บันทึก</th>
+              <th>การใช้งาน</th>
+              <th>จัดการ</th>
             </tr>
           </thead>
           <tbody>
@@ -1461,7 +1492,8 @@
               <th>อีเมล</th>
               <th>เบอร์โทร</th>
               <th>สถานะ</th>
-              <th>บันทึก</th>
+              <th>การใช้งาน</th>
+              <th>จัดการ</th>
             </tr>
           </thead>
           <tbody>
@@ -1516,29 +1548,40 @@
               <th>รายละเอียด</th>
               <th>ลำดับ</th>
               <th>สถานะ</th>
-              <th>บันทึก</th>
+              <th>การใช้งาน</th>
+              <th>จัดการ</th>
             </tr>
           </thead>
           <tbody>
-            ${State.modules.map((module) => `
-              <tr>
-                <td>
-                  <form data-action="admin-module-save" id="module-${module.id}">
-                    <input type="hidden" name="id" value="${module.id}">
-                    <input class="input" name="name" value="${escapeAttr(module.name || '')}" required>
-                  </form>
-                </td>
-                <td><input class="input" name="description" value="${escapeAttr(module.description || '')}" form="module-${module.id}"></td>
-                <td><input class="input" type="number" name="sort_order" value="${escapeAttr(String(module.sort_order ?? 100))}" form="module-${module.id}"></td>
-                <td>
-                  <select class="select" name="is_active" form="module-${module.id}">
-                    ${option('true', 'เปิดใช้งาน', String(Boolean(module.is_active)))}
-                    ${option('false', 'ปิดใช้งาน', String(Boolean(module.is_active)))}
-                  </select>
-                </td>
-                <td><button class="btn small primary" type="submit" form="module-${module.id}">บันทึก</button></td>
-              </tr>
-            `).join('')}
+            ${State.modules.map((module) => {
+              const usageCount = getModuleUsageCount(module.id);
+              const canDelete = usageCount === 0;
+              return `
+                <tr>
+                  <td>
+                    <form data-action="admin-module-save" id="module-${module.id}">
+                      <input type="hidden" name="id" value="${module.id}">
+                      <input class="input" name="name" value="${escapeAttr(module.name || '')}" required>
+                    </form>
+                  </td>
+                  <td><input class="input" name="description" value="${escapeAttr(module.description || '')}" form="module-${module.id}"></td>
+                  <td><input class="input" type="number" name="sort_order" value="${escapeAttr(String(module.sort_order ?? 100))}" form="module-${module.id}"></td>
+                  <td>
+                    <select class="select" name="is_active" form="module-${module.id}">
+                      ${option('true', 'เปิดใช้งาน', String(Boolean(module.is_active)))}
+                      ${option('false', 'ปิดใช้งาน', String(Boolean(module.is_active)))}
+                    </select>
+                  </td>
+                  <td>${usageCount ? `${usageCount.toLocaleString('th-TH')} รายการ` : '<span class="muted">ยังไม่ถูกใช้</span>'}</td>
+                  <td>
+                    <div class="actions">
+                      <button class="btn small primary" type="submit" form="module-${module.id}">บันทึก</button>
+                      ${canDelete ? `<button class="btn small danger" type="button" data-action="admin-module-delete" data-id="${module.id}">ลบ</button>` : ''}
+                    </div>
+                  </td>
+                </tr>
+              `;
+            }).join('')}
           </tbody>
         </table>
       </div>
@@ -1667,6 +1710,10 @@
       const { error } = await State.sb.from('demo_rounds').update(roundPayload).eq('id', editId);
       if (error) throw error;
     } else {
+      if (renewFromId) {
+        await closeRenewedRound(renewFromId);
+      }
+
       const { data, error } = await State.sb.from('demo_rounds').insert({
         ...roundPayload,
         created_by: State.profile.id,
@@ -1693,6 +1740,10 @@
         log_type: renewFromId ? 'ต่ออายุ demo' : DEFAULT_LOG_TYPE,
         message: renewFromId ? 'สร้างรอบเดโมใหม่จากการต่ออายุ' : 'สร้างรายการเดโมใหม่'
       });
+    }
+
+    if (FINAL_STATUSES.has(status)) {
+      await cleanupClosedRoundLogs(roundId);
     }
 
     clearDemoDraft(form.dataset.draftKey || '');
@@ -1735,6 +1786,47 @@
     const rows = accounts.map((account) => ({ ...account, demo_round_id: roundId }));
     const { error } = await State.sb.from('demo_accounts').insert(rows);
     if (error) throw error;
+  }
+
+  async function closeRenewedRound(roundId) {
+    const { error } = await State.sb.from('demo_rounds').update({
+      status: STATUS.CLOSED,
+      end_date: todayISO(),
+      updated_at: new Date().toISOString()
+    }).eq('id', roundId);
+    if (error) throw error;
+
+    await cleanupClosedRoundLogs(roundId);
+  }
+
+  async function cleanupClosedRoundLogs(roundId) {
+    if (!roundId) return;
+
+    const { data, error } = await State.sb
+      .from('activity_logs')
+      .select('id, created_at')
+      .eq('demo_round_id', roundId)
+      .is('deleted_at', null)
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      console.warn('load logs for cleanup skipped:', safeError(error));
+      return;
+    }
+
+    const logs = data || [];
+    if (logs.length <= 1) return;
+
+    const idsToDelete = logs.slice(1).map((log) => log.id);
+    const { error: deleteError } = await State.sb
+      .from('activity_logs')
+      .delete()
+      .in('id', idsToDelete);
+
+    if (deleteError) {
+      console.warn('cleanup logs skipped:', safeError(deleteError));
+      toast('ล้างบันทึกเก่าไม่สำเร็จ กรุณาตรวจ SQL policy v1.1.2', 'warning');
+    }
   }
 
   async function addActivityLog(form) {
@@ -2059,6 +2151,31 @@
     toast('อัปเดตโมดูลแล้ว', 'success');
   }
 
+
+  async function deleteModule(id) {
+    const module = State.modules.find((item) => item.id === id);
+    if (!module) return;
+
+    const usageCount = getModuleUsageCount(id);
+    if (usageCount > 0) {
+      toast('ลบไม่ได้ เพราะโมดูลนี้ถูกใช้งานอยู่', 'error');
+      return;
+    }
+
+    if (!window.confirm(`ลบโมดูล "${module.name}" หรือไม่?`)) return;
+
+    const { error } = await State.sb.from('modules').delete().eq('id', id);
+    if (error) throw error;
+
+    await loadAllData();
+    render();
+    toast('ลบโมดูลแล้ว', 'success');
+  }
+
+  function getModuleUsageCount(moduleId) {
+    return State.roundModules.filter((item) => item.module_id === moduleId).length;
+  }
+
   async function saveProfileAdmin(form) {
     const id = form.id.value;
     const fullName = form.full_name.value.trim();
@@ -2129,6 +2246,74 @@
     await loadAllData();
     render();
     toast('บันทึกการตั้งค่าแล้ว', 'success');
+  }
+
+  function resetDashboardPages() {
+    State.dashboardPages = {
+      near7: 1,
+      expired: 1,
+      latest: 1,
+      customers: 1
+    };
+  }
+
+  function changePage(button) {
+    const scope = button.dataset.pageScope;
+    const key = button.dataset.pageKey || '';
+    const page = Math.max(1, Number(button.dataset.page || 1));
+
+    if (scope === 'dashboard') {
+      State.dashboardPages[key] = page;
+    } else if (scope === 'demo') {
+      State.demoPage = page;
+    }
+
+    render();
+  }
+
+  function paginateRows(rows, page, pageSize) {
+    const totalRows = rows.length;
+    const totalPages = Math.max(1, Math.ceil(totalRows / pageSize));
+    const safePage = Math.min(Math.max(Number(page) || 1, 1), totalPages);
+    const start = (safePage - 1) * pageSize;
+
+    return {
+      rows: rows.slice(start, start + pageSize),
+      page: safePage,
+      totalPages,
+      totalRows
+    };
+  }
+
+  function renderPagination(scope, key, page, totalPages, totalRows) {
+    if (totalPages <= 1) {
+      return `<div class="pagination-summary">${totalRows.toLocaleString('th-TH')} รายการ</div>`;
+    }
+
+    const prevPage = Math.max(1, page - 1);
+    const nextPage = Math.min(totalPages, page + 1);
+    const pages = [];
+    const start = Math.max(1, page - 2);
+    const end = Math.min(totalPages, page + 2);
+
+    for (let current = start; current <= end; current += 1) {
+      pages.push(current);
+    }
+
+    return `
+      <div class="pagination">
+        <span class="pagination-summary">${totalRows.toLocaleString('th-TH')} รายการ · หน้า ${page.toLocaleString('th-TH')} / ${totalPages.toLocaleString('th-TH')}</span>
+        <div class="pagination-buttons">
+          <button class="btn small ghost" data-action="page-change" data-page-scope="${escapeAttr(scope)}" data-page-key="${escapeAttr(key)}" data-page="${prevPage}" ${page <= 1 ? 'disabled' : ''}>ก่อนหน้า</button>
+          ${pages.map((item) => `
+            <button class="btn small ${item === page ? 'primary' : 'ghost'}" data-action="page-change" data-page-scope="${escapeAttr(scope)}" data-page-key="${escapeAttr(key)}" data-page="${item}">
+              ${item.toLocaleString('th-TH')}
+            </button>
+          `).join('')}
+          <button class="btn small ghost" data-action="page-change" data-page-scope="${escapeAttr(scope)}" data-page-key="${escapeAttr(key)}" data-page="${nextPage}" ${page >= totalPages ? 'disabled' : ''}>ถัดไป</button>
+        </div>
+      </div>
+    `;
   }
 
   function getAllDemoRows() {

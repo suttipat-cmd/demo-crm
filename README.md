@@ -4,9 +4,9 @@ Demo CRM สำหรับทีม CS ใช้จัดการบริษ�
 
 ## Version
 
-- Current: `v1.1.1`
+- Current: `v1.1.2`
 - Type: UI/Logic Hotfix
-- SQL required: ไม่ต้องรัน SQL เพิ่มจาก v1.1.0
+- SQL required: `supabase/006_v1_1_2_delete_policies.sql`
 
 ## Files
 
@@ -15,43 +15,61 @@ index.html
 style.css
 script.js
 README.md
+supabase/
+  006_v1_1_2_delete_policies.sql
 ```
 
-## สิ่งที่เปลี่ยนใน v1.1.1
+## สิ่งที่เปลี่ยนใน v1.1.2
 
-- รวมปุ่มรายงานเป็นปุ่มเดียวชื่อ `ดึงรายงาน`
-- ถ้ามี search/filter จะ export ตามผลลัพธ์ที่กรอง ถ้าไม่มี filter จะ export ข้อมูลทั้งหมด
-- แก้หลอดกราฟให้คิดความยาวจากจำนวนรายการทั้งหมดในชุดข้อมูลนั้น ไม่ใช่จากกลุ่มที่มากที่สุด
-- หน้า `รายการเดโม` แสดง 1 บริษัทเป็น 1 record ล่าสุด แม้มีการต่ออายุหลายรอบ
-- รอบเดโมเก่ายังดูได้ในหน้า detail / ประวัติรอบเดโม
-- ปรับตารางรายการเดโมไม่ให้ข้อความตกบรรทัด และใช้ horizontal scroll
-- ปรับ sidebar ตอนย่อให้เป็น compact mode พร้อม tooltip และ active state ชัดขึ้น
+- ลบ master โมดูลได้เฉพาะโมดูลที่ยังไม่ถูกใช้งาน
+- แก้กราฟหลอดให้คำนวณความยาวจากจำนวน demo record ปัจจุบันทั้งหมด
+- เมื่อต่ออายุ demo จะปิดรอบเก่าเป็นสถานะ `ปิดรายการ` ทันที
+- Dashboard tables มี pagination ค่าเริ่มต้น 10 รายการ
+- หน้า `รายการเดโม` มี pagination ค่าเริ่มต้น 20 รายการ
+- เพิ่ม animation แบบพอดีใน card, table, modal, button และ bar chart
+- เมื่อ demo round เป็น `ปิดรายการ` ระบบจะลบ activity logs เก่าของ round นั้นแบบถาวร และเหลือ log ล่าสุดไว้
 
-## วิธี deploy
+## วิธีติดตั้ง
+
+1. Run SQL นี้ใน Supabase SQL Editor:
+
+```txt
+supabase/006_v1_1_2_delete_policies.sql
+```
+
+2. แทนที่ไฟล์บน repo:
+
+```txt
+index.html
+style.css
+script.js
+README.md
+```
+
+3. Push ขึ้น GitHub Pages:
 
 ```bash
-git add index.html style.css script.js README.md
-git commit -m "Hotfix v1.1.1 report dashboard and renewed demo list"
+git add index.html style.css script.js README.md supabase/006_v1_1_2_delete_policies.sql
+git commit -m "Release v1.1.2 pagination module delete and cleanup"
 git push
 ```
 
-หลัง deploy ให้ hard refresh:
+4. เปิดเว็บแล้ว hard refresh:
 
 ```txt
 Mac: Cmd + Shift + R
 Windows: Ctrl + F5
 ```
 
+## ตรวจหลัง deploy
+
+- ลองลบโมดูลที่ยังไม่ถูกใช้งาน ต้องลบได้
+- โมดูลที่ถูกใช้งานแล้ว ต้องไม่แสดงปุ่มลบ
+- สร้าง demo แล้วต่ออายุ รอบเก่าต้องเปลี่ยนเป็น `ปิดรายการ`
+- Dashboard table ต้องแบ่งหน้า 10 รายการ
+- รายการเดโมต้องแบ่งหน้า 20 รายการ
+- กราฟหลอดต้องไม่เต็ม 100% เพียงเพราะเป็นกลุ่มที่มากที่สุด
+
 ## Rollback
 
-ถ้ามีปัญหา ให้ revert commit v1.1.1 แล้ว deploy กลับเป็น v1.1.0
-
-```bash
-git revert HEAD
-git push
-```
-
-## Notes
-
-- ห้ามใส่ `service_role key`, database password, token หรือ secret ใด ๆ ใน frontend
-- v1.1.1 ไม่เปลี่ยน schema ฐานข้อมูล
+ถ้าต้อง rollback ให้ revert commit ล่าสุดกลับ v1.1.1 และอย่าใช้งานปุ่มลบโมดูล/cleanup log จนกว่าจะตรวจ policy อีกครั้ง
