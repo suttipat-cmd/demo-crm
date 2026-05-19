@@ -4,8 +4,8 @@ DEMO CRM สำหรับทีม CS ใช้จัดการบริษ�
 
 ## Version
 
-- Current: `v1.2.5`
-- Type: Report + Production Readiness
+- Current: `v1.2.6`
+- Type: Report Presentation + Google Apps Script Email
 - SQL required: ไม่ต้องรัน SQL เพิ่ม
 
 ## Files
@@ -15,18 +15,59 @@ index.html
 style.css
 script.js
 README.md
+apps-script/
+  Code.gs
 ```
 
-## สิ่งที่เปลี่ยนใน v1.2.5
+## สิ่งที่เปลี่ยนใน v1.2.6
 
-- เพิ่มเมนู **รายงาน** ใน navbar ก่อนเมนูตั้งค่าระบบ
-- หน้า **รายงาน** แสดง 1 บริษัท = 1 แถว โดยไม่กรองตามสถานะ
-- แสดงข้อมูลเดโมล่าสุดของแต่ละบริษัท พร้อมบันทึกล่าสุดของบริษัทนั้น
-- เรียงข้อมูลจากวันที่บันทึกล่าสุดใหม่สุดก่อน
-- เพิ่มค้นหาในหน้ารายงาน
-- เพิ่มปุ่ม **ดึงรายงาน** สำหรับ export รายงานบริษัท
-- เพิ่ม pagination ในหน้ารายงาน ค่าเริ่มต้น 20 รายการ
-- เพิ่ม production readiness checklist สำหรับตรวจระบบก่อนส่งให้ user ใช้งานจริง
+- ปรับหน้า **รายงาน** ให้เหมาะกับการเปิดนำเสนอมากขึ้น
+- ลดการแสดงข้อมูลแบบตารางยาว ๆ แล้วเปลี่ยนเป็น:
+  - hero summary
+  - metric cards
+  - บันทึกล่าสุดที่ควรติดตาม
+  - รายการที่ต้องดูแล
+  - card สรุปรายบริษัท
+- ยังแสดง 1 บริษัท = 1 record และเรียงตามบันทึกล่าสุด
+- เพิ่ม Google Apps Script สำหรับส่งอีเมลจริงผ่าน Gmail/Google Workspace
+- Web app ส่ง `email_log_id` พร้อม Supabase access token ไป Apps Script
+- Apps Script validate session กับ Supabase Auth ก่อนอ่าน email log
+- ไม่ใช้ `service_role key` ใน frontend หรือ Apps Script
+
+## ตั้งค่า Google Apps Script
+
+1. ไปที่ Google Apps Script แล้วสร้าง project ใหม่
+2. คัดลอกโค้ดจาก `apps-script/Code.gs` ไปวาง
+3. ไปที่ **Project Settings → Script properties**
+4. เพิ่มค่า:
+
+```txt
+SUPABASE_URL=https://YOUR_PROJECT.supabase.co
+SUPABASE_ANON_KEY=YOUR_SUPABASE_ANON_KEY
+SENDER_NAME=DEMO CRM
+```
+
+5. Deploy เป็น Web App:
+   - Execute as: `Me`
+   - Who has access: `Anyone`
+6. Copy Web App URL
+7. กลับไปที่ DEMO CRM:
+   - ตั้งค่าระบบ → การตั้งค่า
+   - วาง URL ในช่อง Google Apps Script Web App URL
+   - กดบันทึก
+
+## Email flow
+
+```txt
+User กดส่งอีเมล
+→ Web app สร้าง email_logs เป็น queued
+→ Web app เรียก Apps Script พร้อม email_log_id + Supabase access token
+→ Apps Script ตรวจ token กับ Supabase Auth
+→ Apps Script อ่าน email_logs ผ่าน RLS
+→ Apps Script ส่ง Gmail
+→ Apps Script อัปเดต email_logs เป็น sent/error
+→ Web app โหลดข้อมูลใหม่
+```
 
 ## Production readiness checklist
 
@@ -46,7 +87,7 @@ README.md
 - [ ] ตาราง `demo_rounds` เปิด RLS และ policy ตรงกับ flow สร้าง/แก้/ต่ออายุ
 - [ ] ตาราง `demo_accounts` เปิด RLS และไม่อ่านได้จาก user ที่ไม่ได้ login
 - [ ] ตาราง `activity_logs` เปิด RLS และแก้/ลบได้เฉพาะ log ล่าสุดตาม rule
-- [ ] ตาราง `email_logs` เปิด RLS และไม่หลุดข้อมูล email ข้าม role
+- [ ] ตาราง `email_logs` เปิด RLS และ Apps Script อ่าน/อัปเดตได้ด้วย user token
 - [ ] ตาราง `modules`, `responsible_people`, `settings`, `email_templates` มี policy ตาม role
 
 ### Core flow
@@ -61,13 +102,6 @@ README.md
 - [ ] รอบเก่าถูกเปลี่ยนเป็น `ปิดรายการ`
 - [ ] รายงานแสดงบันทึกล่าสุดของแต่ละบริษัทถูกต้อง
 
-### Report / Export
-
-- [ ] หน้า รายการเดโม กดดึงรายงานได้
-- [ ] หน้า รายงาน กดดึงรายงานได้
-- [ ] Search/filter แล้ว export ได้ข้อมูลตรงกับที่เห็น
-- [ ] ข้อมูล sensitive เช่นรหัสผ่าน demo account แสดงเฉพาะหน้าที่ตั้งใจให้เห็น
-
 ### Email
 
 - [ ] Preview email ถูกต้อง
@@ -75,16 +109,6 @@ README.md
 - [ ] ส่งอีเมลครั้งแรกได้จริง
 - [ ] Email error/queued แสดงใน notification
 - [ ] Reminder 3 วันทำงานตามที่ต้องการ
-
-### UI / Browser
-
-- [ ] Hard refresh แล้วไม่ค้าง loading
-- [ ] กลับมาจาก tab อื่นแล้วข้อมูลไม่หาย
-- [ ] Draft form ถูกจำใน browser เดิม
-- [ ] Dashboard pagination ใช้งานได้
-- [ ] Demo list pagination ใช้งานได้
-- [ ] Report pagination ใช้งานได้
-- [ ] Mobile/tablet ไม่พัง แม้ยังไม่ใช่ primary target
 
 ### Security / Repo
 
@@ -98,7 +122,7 @@ README.md
 
 ```bash
 git add .
-git commit -m "Release v1.2.5 report and production readiness"
+git commit -m "Release v1.2.6 report presentation and email script"
 git push
 ```
 

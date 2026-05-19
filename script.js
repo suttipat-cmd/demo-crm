@@ -1,11 +1,11 @@
-/* DEMO CRM v1.2.5
+/* DEMO CRM v1.2.6
    Static SPA for GitHub Pages + Supabase.
    Security rule: never place service_role key, database password, or private token in this file.
 */
 (() => {
   'use strict';
 
-  const APP_VERSION = '1.2.5';
+  const APP_VERSION = '1.2.6';
   const APP_CONFIG = {
     SUPABASE_URL: 'https://hacmassihdqlgkmwoivs.supabase.co',
     SUPABASE_ANON_KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhhY21hc3NpaGRxbGdrbXdvaXZzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkxMjk1ODgsImV4cCI6MjA5NDcwNTU4OH0.TgkJCHaRndMDZY2SANXCjFLdMkHUd_bxJOb0K9Znpa8',
@@ -1395,93 +1395,161 @@
     State.reportPage = pageInfo.page;
     const pageRows = pageInfo.rows;
 
+    const withLog = rows.filter((row) => row.latestLog).length;
+    const nearExpiry = rows.filter((row) => !FINAL_STATUSES.has(row.effectiveStatus) && row.remainingDays >= 0 && row.remainingDays <= 7).length;
+    const expiredOpen = rows.filter((row) => row.effectiveStatus === STATUS.EXPIRED).length;
+    const latestRows = rows.filter((row) => row.latestLog).slice(0, 5);
+    const focusRows = rows
+      .filter((row) => row.latestLog || row.remainingDays <= 7 || row.effectiveStatus === STATUS.EXPIRED)
+      .slice(0, 6);
+
     return `
       ${renderTopbar('รายงาน', '', `
         <button class="btn secondary" data-action="company-report-export">ดึงรายงาน</button>
       `)}
-      <section class="card report-page-card">
-        <div class="filters">
-          <div class="field search-field">
-            <label>ค้นหา</label>
-            <input class="input" data-report-search value="${escapeAttr(State.reportSearch)}" placeholder="บริษัท ผู้ติดต่อ อีเมล ผู้รับผิดชอบ โมดูล บันทึกล่าสุด">
+      <section class="report-hero">
+        <div class="report-hero-copy">
+          <span class="report-kicker">Company Demo Report</span>
+          <h2>ภาพรวมบริษัทที่มีเดโม</h2>
+          <p>สรุปรายบริษัทสำหรับเปิดนำเสนอ โดยเน้นบันทึกล่าสุด ความเคลื่อนไหว และรายการที่ควรติดตามต่อ</p>
+        </div>
+        <div class="report-hero-metrics">
+          ${reportMetricCard('บริษัททั้งหมด', rows.length, 'รายการที่อยู่ในผลลัพธ์ปัจจุบัน')}
+          ${reportMetricCard('มีบันทึกล่าสุด', withLog, 'มี activity log แล้ว')}
+          ${reportMetricCard('ใกล้หมดอายุ', nearExpiry, 'ภายใน 7 วัน')}
+          ${reportMetricCard('หมดอายุ', expiredOpen, 'ยังไม่ปิดรายการ')}
+        </div>
+      </section>
+
+      <section class="report-toolbar card">
+        <div class="field search-field">
+          <label>ค้นหารายงาน</label>
+          <input class="input" data-report-search value="${escapeAttr(State.reportSearch)}" placeholder="ค้นหาบริษัท ผู้ติดต่อ อีเมล ผู้รับผิดชอบ โมดูล หรือบันทึกล่าสุด">
+        </div>
+        <div class="report-toolbar-note">
+          แสดง ${pageRows.length.toLocaleString('th-TH')} จาก ${rows.length.toLocaleString('th-TH')} บริษัท
+        </div>
+      </section>
+
+      <section class="report-presentation-grid">
+        <div class="card report-focus-card">
+          <div class="section-title soft-title">
+            <h2>บันทึกล่าสุดที่ควรติดตาม</h2>
+          </div>
+          ${renderReportHighlightList(latestRows)}
+        </div>
+        <div class="card report-focus-card">
+          <div class="section-title soft-title">
+            <h2>รายการที่ต้องดูแล</h2>
+          </div>
+          ${renderReportActionList(focusRows)}
+        </div>
+      </section>
+
+      <section class="card report-board">
+        <div class="section-title soft-title">
+          <div>
+            <h2>สรุปรายบริษัท</h2>
+            <p class="muted small-text">เรียงจากวันที่บันทึกล่าสุดใหม่สุดก่อน ไม่ตัดข้อมูลตามสถานะเดโม</p>
           </div>
         </div>
-        <div class="report-summary">
-          <div class="report-summary-item">
-            <span>บริษัททั้งหมด</span>
-            <strong>${rows.length.toLocaleString('th-TH')}</strong>
-          </div>
-          <div class="report-summary-item">
-            <span>มีบันทึกล่าสุด</span>
-            <strong>${rows.filter((row) => row.latestLog).length.toLocaleString('th-TH')}</strong>
-          </div>
-          <div class="report-summary-item">
-            <span>ยังไม่มีบันทึก</span>
-            <strong>${rows.filter((row) => !row.latestLog).length.toLocaleString('th-TH')}</strong>
-          </div>
-        </div>
-        ${renderCompanyReportTable(pageRows)}
+        ${renderReportCompanyCards(pageRows)}
         ${renderPagination('report', 'companies', pageInfo.page, pageInfo.totalPages, rows.length)}
       </section>
     `;
   }
 
-  function renderCompanyReportTable(rows) {
+  function reportMetricCard(label, value, hint = '') {
+    return `
+      <div class="report-metric">
+        <span>${escapeHTML(label)}</span>
+        <strong>${Number(value || 0).toLocaleString('th-TH')}</strong>
+        <small>${escapeHTML(hint)}</small>
+      </div>
+    `;
+  }
+
+  function renderReportHighlightList(rows) {
+    if (!rows.length) {
+      return '<div class="empty compact-empty">ยังไม่มีบันทึกล่าสุด</div>';
+    }
+
+    return `
+      <div class="report-highlight-list">
+        ${rows.map((row) => `
+          <a class="report-highlight-item" href="#demos/${row.round.id}">
+            <div class="report-highlight-head">
+              <strong>${escapeHTML(row.company.company_name)}</strong>
+              <span>${formatDateTime(row.latestLog.created_at)}</span>
+            </div>
+            <p>${escapeHTML(row.latestLog.message)}</p>
+          </a>
+        `).join('')}
+      </div>
+    `;
+  }
+
+  function renderReportActionList(rows) {
+    if (!rows.length) {
+      return '<div class="empty compact-empty">ไม่มีรายการเร่งด่วนในตอนนี้</div>';
+    }
+
+    return `
+      <div class="report-action-list">
+        ${rows.map((row) => {
+          const urgency = row.effectiveStatus === STATUS.EXPIRED
+            ? 'หมดอายุแล้ว'
+            : row.remainingDays >= 0 && row.remainingDays <= 7
+              ? `เหลือ ${formatRemaining(row.remainingDays)}`
+              : 'มีบันทึกล่าสุด';
+          return `
+            <a class="report-action-item" href="#demos/${row.round.id}">
+              <div>
+                <strong>${escapeHTML(row.company.company_name)}</strong>
+                <span>${escapeHTML(row.latestLog?.message || 'ยังไม่มีบันทึก')}</span>
+              </div>
+              <em>${escapeHTML(urgency)}</em>
+            </a>
+          `;
+        }).join('')}
+      </div>
+    `;
+  }
+
+  function renderReportCompanyCards(rows) {
     if (!rows.length) return '<div class="empty">ไม่พบข้อมูลรายงาน</div>';
 
     return `
-      <div class="table-wrap report-table-wrap">
-        <table class="report-table">
-          <thead>
-            <tr>
-              <th>บริษัท</th>
-              <th>ผู้ติดต่อ</th>
-              <th>อีเมลผู้ติดต่อ</th>
-              <th>ผู้รับผิดชอบ</th>
-              <th>โมดูล</th>
-              <th>เดโมล่าสุด</th>
-              <th>บันทึกล่าสุด</th>
-              <th>วันที่บันทึก</th>
-              <th>จัดการ</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${rows.map((row) => `
-              <tr>
-                <td>
-                  <a href="#demos/${row.round.id}">
-                    <strong>${escapeHTML(row.company.company_name)}</strong>
-                  </a>
-                  <div class="muted small-text">${statusBadge(row.effectiveStatus)}</div>
-                </td>
-                <td>${escapeHTML(row.company.contact_name || '-')}</td>
-                <td class="cell-ellipsis" title="${escapeAttr((row.company.contact_emails || []).join(', '))}">
-                  ${escapeHTML((row.company.contact_emails || []).join(', ') || '-')}
-                </td>
-                <td>${escapeHTML(displayName(row.responsible))}</td>
-                <td class="cell-ellipsis" title="${escapeAttr(row.modules.map((module) => module.name).join(', ') || '-')}">
-                  ${escapeHTML(row.modules.map((module) => module.name).join(', ') || '-')}
-                </td>
-                <td>
-                  <span>${formatDate(row.round.start_date)} - ${formatDate(row.round.end_date)}</span>
-                  <div class="muted small-text">ต่ออายุครั้งที่ ${Number(row.round.renewal_no || 0).toLocaleString('th-TH')}</div>
-                </td>
-                <td class="report-log-cell">
-                  <div class="${row.latestLog ? 'report-log-message' : 'report-log-empty'}" title="${escapeAttr(row.latestLog?.message || 'ยังไม่มีบันทึก')}">
-                    ${escapeHTML(row.latestLog?.message || 'ยังไม่มีบันทึก')}
-                  </div>
-                </td>
-                <td>${row.latestLog ? formatDateTime(row.latestLog.created_at) : '-'}</td>
-                <td>
-                  <div class="actions">
-                    <a class="btn small ghost" href="#demos/${row.round.id}">ดู</a>
-                    <a class="btn small secondary" href="#demos/edit/${row.round.id}">แก้ไข</a>
-                  </div>
-                </td>
-              </tr>
-            `).join('')}
-          </tbody>
-        </table>
+      <div class="report-card-grid">
+        ${rows.map((row) => `
+          <article class="report-company-card">
+            <div class="report-company-main">
+              <div class="report-company-title">
+                <a href="#demos/${row.round.id}">${escapeHTML(row.company.company_name)}</a>
+                ${statusBadge(row.effectiveStatus)}
+              </div>
+              <div class="report-company-meta">
+                <span>ผู้ติดต่อ: ${escapeHTML(row.company.contact_name || '-')}</span>
+                <span>ผู้รับผิดชอบ: ${escapeHTML(displayName(row.responsible))}</span>
+                <span>เดโม: ${formatDate(row.round.start_date)} - ${formatDate(row.round.end_date)}</span>
+              </div>
+              <div class="report-module-tags">
+                ${row.modules.length
+                  ? row.modules.slice(0, 4).map((module) => `<span>${escapeHTML(module.name)}</span>`).join('')
+                  : '<span>ไม่มีโมดูล</span>'}
+                ${row.modules.length > 4 ? `<span>+${row.modules.length - 4}</span>` : ''}
+              </div>
+            </div>
+            <div class="report-company-log">
+              <span>${row.latestLog ? 'บันทึกล่าสุด' : 'ยังไม่มีบันทึก'}</span>
+              <p>${escapeHTML(row.latestLog?.message || 'ยังไม่มี activity log ของบริษัทนี้')}</p>
+              <small>${row.latestLog ? formatDateTime(row.latestLog.created_at) : '—'}</small>
+            </div>
+            <div class="report-company-actions">
+              <a class="btn small ghost" href="#demos/${row.round.id}" aria-label="ดูรายละเอียด ${escapeAttr(row.company.company_name)}">ดูรายละเอียด</a>
+            </div>
+          </article>
+        `).join('')}
       </div>
     `;
   }
@@ -2441,9 +2509,16 @@
           method: 'POST',
           mode: 'cors',
           headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-          body: JSON.stringify({ email_log_id: data.id })
+          body: JSON.stringify({
+            email_log_id: data.id,
+            access_token: State.session?.access_token || '',
+            app_version: APP_VERSION
+          })
         });
-        if (!res.ok) throw new Error(`Apps Script HTTP ${res.status}`);
+        const result = await res.json().catch(() => ({}));
+        if (!res.ok || result.ok === false) {
+          throw new Error(result.error || `Apps Script HTTP ${res.status}`);
+        }
         status = 'sent';
       } catch (err) {
         status = 'error';
