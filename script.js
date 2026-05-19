@@ -1,11 +1,11 @@
-/* DEMO CRM v1.3.2
+/* DEMO CRM v1.3.3
    Static SPA for GitHub Pages + Supabase.
    Security rule: never place service_role key, database password, or private token in this file.
 */
 (() => {
   'use strict';
 
-  const APP_VERSION = '1.3.2';
+  const APP_VERSION = '1.3.3';
   const APP_CONFIG = {
     SUPABASE_URL: 'https://hacmassihdqlgkmwoivs.supabase.co',
     SUPABASE_ANON_KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhhY21hc3NpaGRxbGdrbXdvaXZzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkxMjk1ODgsImV4cCI6MjA5NDcwNTU4OH0.TgkJCHaRndMDZY2SANXCjFLdMkHUd_bxJOb0K9Znpa8',
@@ -1646,7 +1646,7 @@
         <div class="section-title soft-title">
           <div>
             <h2>สรุปรายบริษัท</h2>
-            <p class="muted small-text">เรียงจากวันที่บันทึกล่าสุดใหม่สุดก่อน ไม่ตัดข้อมูลตามสถานะเดโม</p>
+            <p class="muted small-text">เรียงจากบันทึกความคืบหน้าของบริษัทล่าสุดเท่านั้น ไม่รวมกิจกรรมระบบหรือการส่งอีเมล</p>
           </div>
         </div>
         ${renderReportCompanyCards(pageRows)}
@@ -3363,20 +3363,23 @@ async function saveModule(form) {
     return getDemoRows()
       .map((row) => {
         const latestLog = getLatestCompanyLog(row.company.id);
-        const fallbackAt = row.round.updated_at || row.round.created_at || row.company.updated_at || row.company.created_at || '';
-        const sortAt = latestLog?.created_at || fallbackAt;
 
         return {
           ...row,
           latestLog,
           latestLogAt: latestLog?.created_at || '',
-          reportSortAt: sortAt
+          hasManualLog: Boolean(latestLog)
         };
       })
       .sort((a, b) => {
-        const dateA = new Date(a.reportSortAt || 0).getTime();
-        const dateB = new Date(b.reportSortAt || 0).getTime();
-        if (dateA !== dateB) return dateB - dateA;
+        if (a.hasManualLog !== b.hasManualLog) return a.hasManualLog ? -1 : 1;
+
+        if (a.hasManualLog && b.hasManualLog) {
+          const dateA = new Date(a.latestLogAt || 0).getTime();
+          const dateB = new Date(b.latestLogAt || 0).getTime();
+          if (dateA !== dateB) return dateB - dateA;
+        }
+
         return String(a.company.company_name || '').localeCompare(String(b.company.company_name || ''), 'th');
       });
   }

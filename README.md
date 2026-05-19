@@ -4,8 +4,8 @@ DEMO CRM สำหรับทีม CS ใช้จัดการบริษ�
 
 ## Version
 
-- Current: `v1.3.2`
-- Type: Notification Read/Dismiss Release
+- Current: `v1.3.3`
+- Type: Report Manual Log Sort Hotfix
 - SQL required:
   - `supabase/009_v1_2_9_activity_log_source.sql` ถ้ายังไม่เคยรันจาก v1.2.9
   - `supabase/010_v1_3_0_profile_avatar.sql` ถ้ายังไม่เคยรันจาก v1.3.0
@@ -26,6 +26,14 @@ supabase/
   011_v1_3_2_notification_states.sql
   reset_transaction_data_keep_masters.sql
 ```
+
+## v1.3.3 Update
+
+- แก้หน้า `รายงาน / สรุปรายบริษัท` ให้เรียงจาก `บันทึกความคืบหน้าของบริษัท` ล่าสุดเท่านั้น
+- ใช้เฉพาะ `activity_logs.source = manual` หรือ log ที่ถือว่าเป็น manual log
+- ไม่นำกิจกรรมระบบ เช่น ส่งอีเมล, queue email, สร้างเดโม, ต่ออายุ, เปลี่ยนสถานะ มามีผลกับการเรียงลำดับ
+- บริษัทที่ยังไม่มีบันทึกความคืบหน้าแบบ manual จะอยู่ท้ายรายการ และเรียงตามชื่อบริษัท
+- ไม่ต้องรัน SQL เพิ่มจาก v1.3.2
 
 ## v1.3.2 Update
 
