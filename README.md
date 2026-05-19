@@ -1,12 +1,12 @@
 # demo-crm
 
-Demo CRM สำหรับทีม CS ใช้จัดการบริษัทที่ขอทดลองใช้งานระบบ
+DEMO CRM สำหรับทีม CS ใช้จัดการบริษัทที่ขอทดลองใช้งานระบบ
 
 ## Version
 
-- Current: `v1.1.2`
-- Type: UI/Logic Hotfix
-- SQL required: `supabase/006_v1_1_2_delete_policies.sql`
+- Current: `v1.2.0`
+- Type: UI Redesign
+- SQL required: ไม่ต้องรัน SQL เพิ่ม
 
 ## Files
 
@@ -15,29 +15,22 @@ index.html
 style.css
 script.js
 README.md
-supabase/
-  006_v1_1_2_delete_policies.sql
 ```
 
-## สิ่งที่เปลี่ยนใน v1.1.2
+## สิ่งที่เปลี่ยนใน v1.2.0
 
-- ลบ master โมดูลได้เฉพาะโมดูลที่ยังไม่ถูกใช้งาน
-- แก้กราฟหลอดให้คำนวณความยาวจากจำนวน demo record ปัจจุบันทั้งหมด
-- เมื่อต่ออายุ demo จะปิดรอบเก่าเป็นสถานะ `ปิดรายการ` ทันที
-- Dashboard tables มี pagination ค่าเริ่มต้น 10 รายการ
-- หน้า `รายการเดโม` มี pagination ค่าเริ่มต้น 20 รายการ
-- เพิ่ม animation แบบพอดีใน card, table, modal, button และ bar chart
-- เมื่อ demo round เป็น `ปิดรายการ` ระบบจะลบ activity logs เก่าของ round นั้นแบบถาวร และเหลือ log ล่าสุดไว้
+- เปลี่ยน layout หลักเป็น Top Navigation ตาม design system ใหม่
+- ใช้ชื่อระบบ `DEMO CRM`
+- ฝังโลโก้ในไฟล์โค้ดเพื่อไม่ต้องเพิ่มไฟล์รูปแยก
+- ปรับสีหลักเป็น blue / cyan ตาม brand
+- ปรับ card, table, form, dropdown, badge, pagination, modal และ toast ให้เป็นชุดเดียวกัน
+- ปรับ spacing, radius, shadow และ hover state ให้ใช้งานง่ายขึ้น
+- ปรับ responsive สำหรับจอเล็ก โดยเมนูด้านบนเลื่อนได้
+- รักษา logic จาก v1.1.2 ทั้งหมด
 
 ## วิธีติดตั้ง
 
-1. Run SQL นี้ใน Supabase SQL Editor:
-
-```txt
-supabase/006_v1_1_2_delete_policies.sql
-```
-
-2. แทนที่ไฟล์บน repo:
+แทนที่ไฟล์บน repo:
 
 ```txt
 index.html
@@ -46,15 +39,15 @@ script.js
 README.md
 ```
 
-3. Push ขึ้น GitHub Pages:
+จากนั้น push:
 
 ```bash
-git add index.html style.css script.js README.md supabase/006_v1_1_2_delete_policies.sql
-git commit -m "Release v1.1.2 pagination module delete and cleanup"
+git add .
+git commit -m "Release v1.2.0 redesign top navigation"
 git push
 ```
 
-4. เปิดเว็บแล้ว hard refresh:
+หลัง deploy ให้ hard refresh:
 
 ```txt
 Mac: Cmd + Shift + R
@@ -63,13 +56,12 @@ Windows: Ctrl + F5
 
 ## ตรวจหลัง deploy
 
-- ลองลบโมดูลที่ยังไม่ถูกใช้งาน ต้องลบได้
-- โมดูลที่ถูกใช้งานแล้ว ต้องไม่แสดงปุ่มลบ
-- สร้าง demo แล้วต่ออายุ รอบเก่าต้องเปลี่ยนเป็น `ปิดรายการ`
-- Dashboard table ต้องแบ่งหน้า 10 รายการ
-- รายการเดโมต้องแบ่งหน้า 20 รายการ
-- กราฟหลอดต้องไม่เต็ม 100% เพียงเพราะเป็นกลุ่มที่มากที่สุด
+- หน้า login ต้องแสดงโลโก้และชื่อ DEMO CRM
+- หลัง login ต้องเห็นเมนูด้านบน: แดชบอร์ด, รายการเดโม, สร้างเดโม, ตั้งค่าระบบ
+- Dashboard, รายการเดโม, ฟอร์ม, Detail และ Admin ต้องยังใช้งานได้เหมือน v1.1.2
+- ตรวจสร้างเดโม, ต่ออายุ, บันทึก log, ลบโมดูลที่ไม่ถูกใช้งาน, pagination และดึงรายงาน
+- ตรวจ Console ว่าไม่มี JavaScript error
 
 ## Rollback
 
-ถ้าต้อง rollback ให้ revert commit ล่าสุดกลับ v1.1.1 และอย่าใช้งานปุ่มลบโมดูล/cleanup log จนกว่าจะตรวจ policy อีกครั้ง
+ถ้า UI มีปัญหา ให้ revert commit นี้กลับ v1.1.2 ได้ทันที เพราะ v1.2.0 ไม่ได้เพิ่ม SQL migration
