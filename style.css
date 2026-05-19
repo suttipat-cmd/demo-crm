@@ -2563,3 +2563,171 @@ tbody tr:hover {
     margin-right: 22px;
   }
 }
+
+
+/* v1.2.3 login layout and back button refinement */
+.auth-split-page {
+  min-height: 100vh;
+  grid-template-columns: minmax(420px, 1.1fr) minmax(380px, 0.9fr);
+  background:
+    radial-gradient(circle at 76% 18%, rgba(24, 198, 200, 0.18), transparent 30%),
+    linear-gradient(120deg, #202f99 0%, #2f6fed 50%, #eef4ff 50%, #ffffff 100%);
+}
+
+.auth-hero {
+  overflow: hidden;
+  padding: clamp(34px, 5.3vw, 72px);
+}
+
+.auth-hero h1 {
+  font-size: clamp(44px, 5vw, 70px);
+  line-height: 1.06;
+  letter-spacing: -0.045em;
+  text-transform: none;
+}
+
+.auth-hero p {
+  max-width: 600px;
+  margin-top: 24px;
+  font-size: clamp(15px, 1.2vw, 18px);
+  line-height: 1.9;
+}
+
+.auth-hero-kicker {
+  margin-bottom: 16px;
+  letter-spacing: 0.22em;
+}
+
+.auth-panel {
+  background:
+    radial-gradient(circle at 28% 12%, rgba(24, 198, 200, 0.15), transparent 32%),
+    linear-gradient(145deg, rgba(255,255,255,0.72), rgba(238,244,255,0.94));
+}
+
+.login-card {
+  width: min(470px, 100%);
+  padding-bottom: 26px;
+  border-radius: 24px;
+}
+
+.login-card-hero {
+  min-height: 130px;
+  padding: 26px 34px 42px;
+}
+
+.login-card-hero .login-logo {
+  width: 72px;
+  height: 72px;
+  border-radius: 20px;
+}
+
+.login-card-hero strong {
+  font-size: 28px;
+}
+
+.login-lock {
+  width: 64px;
+  height: 64px;
+  margin-top: -32px;
+  margin-bottom: 10px;
+  border-width: 8px;
+  font-size: 24px;
+}
+
+.login-title {
+  padding: 0 30px;
+}
+
+.login-title h1 {
+  font-size: clamp(24px, 2.5vw, 32px);
+  line-height: 1.22;
+}
+
+.login-title p {
+  margin-top: 8px;
+  font-size: 14px;
+}
+
+.login-form {
+  gap: 14px;
+  padding: 22px 34px 0;
+}
+
+.input-with-icon .input {
+  height: 52px;
+}
+
+.login-submit {
+  height: 50px;
+  margin-top: 4px;
+}
+
+.login-note {
+  margin: 18px 34px 0;
+  padding-top: 16px;
+  font-size: 13px;
+}
+
+.icon-button.back-button {
+  width: 42px;
+  height: 42px;
+  font-size: 24px;
+  font-weight: 900;
+  text-decoration: none;
+  border: 1px solid var(--line);
+  color: #1e40af;
+  background: #fff;
+}
+
+.icon-button.back-button:hover {
+  background: #eff6ff;
+  transform: translateX(-2px);
+}
+
+@media (max-width: 980px) {
+  .auth-split-page {
+    display: grid;
+    grid-template-columns: 1fr;
+    overflow: auto;
+    background: linear-gradient(180deg, #202f99 0%, #2f6fed 45%, #eef4ff 45%, #ffffff 100%);
+  }
+
+  .auth-hero {
+    min-height: auto;
+    padding: 34px 24px 28px;
+  }
+
+  .auth-panel {
+    min-height: auto;
+    padding: 22px 18px 38px;
+  }
+
+  .auth-hero-footer {
+    margin-top: 30px;
+  }
+}
+
+@media (max-width: 640px) {
+  .auth-hero h1 {
+    font-size: clamp(40px, 13vw, 58px);
+  }
+
+  .login-card {
+    border-radius: 22px;
+  }
+
+  .login-card-hero {
+    padding: 22px 24px 38px;
+  }
+
+  .login-form,
+  .login-title {
+    padding-left: 24px;
+    padding-right: 24px;
+  }
+
+  .login-note {
+    margin-left: 24px;
+    margin-right: 24px;
+  }
+}

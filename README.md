@@ -4,9 +4,9 @@ DEMO CRM สำหรับทีม CS ใช้จัดการบริษ�
 
 ## Version
 
-- Current: `v1.2.2`
-- Type: Login & Branding Update
-- SQL required: ไม่ต้องรัน SQL เพิ่ม
+- Current: `v1.2.3`
+- Type: Login/UI + Master Delete + Cleanup SQL
+- SQL required: มี SQL สำหรับ policy ลบ master และ SQL สำหรับล้างข้อมูลธุรกรรม
 
 ## Files
 
@@ -15,40 +15,55 @@ index.html
 style.css
 script.js
 README.md
+supabase/
+  007_v1_2_3_master_delete_policies.sql
+  reset_transaction_data_keep_masters.sql
 ```
 
-## สิ่งที่เปลี่ยนใน v1.2.2
+## สิ่งที่เปลี่ยนใน v1.2.3
 
-- ใช้โลโก้ DEMO CRM เป็นโลโก้หลักทุกจุด
-- ใช้โลโก้เดียวกันกับ favicon บน browser tab
-- ถ้าอัปโหลดโลโก้ใหม่ในตั้งค่าระบบ จะอัปเดตโลโก้และ favicon ตาม
-- ปรับหน้า Login ใหม่เป็น split layout ตามแนว design system
-- เพิ่ม hero section, login card, input icon และปุ่มแสดง/ซ่อนรหัสผ่าน
-- เปลี่ยน wording ปุ่ม email preview จาก `ส่ง / บันทึกคิวอีเมล` เป็น `ส่งอีเมล`
-- ไม่แก้ฐานข้อมูล
+- ปรับปุ่ม “กลับ” เป็นไอคอน Back Arrow
+- ปรับหน้า Login ให้ข้อความไม่ทับซ้อน ฟอร์มเล็กลง และพื้นหลังเต็มทั้งหน้า
+- เพิ่มปุ่มลบ master ผู้รับผิดชอบ เมื่อยังไม่มีรายการเดโม related
+- คงการลบ master โมดูลแบบลบได้เฉพาะยังไม่ถูกใช้งาน
+- เพิ่ม SQL สำหรับล้างข้อมูลธุรกรรมทั้งหมด โดยเก็บ master data ไว้
+- อัปเดต version/cache เป็น `1.2.3`
+
+## SQL
+
+รันไฟล์นี้ก่อนใช้การลบ master ผ่านหน้าเว็บ:
+
+```txt
+supabase/007_v1_2_3_master_delete_policies.sql
+```
+
+ถ้าต้องการล้างข้อมูล demo ทั้งหมด แต่เก็บ master ให้รันไฟล์นี้ด้วยความระมัดระวัง:
+
+```txt
+supabase/reset_transaction_data_keep_masters.sql
+```
+
+ไฟล์ reset จะล้าง:
+- companies
+- demo_rounds
+- demo_accounts
+- demo_round_modules
+- activity_logs
+- email_logs
+
+และจะเก็บ:
+- profiles/users
+- responsible_people
+- modules
+- email_templates
+- settings/logo/fixed CC
 
 ## Deploy
 
 ```bash
 git add .
-git commit -m "Release v1.2.2 login and branding update"
+git commit -m "Release v1.2.3 login layout and master cleanup"
 git push
 ```
 
-หลัง deploy ให้กด hard refresh:
-
-```txt
-Mac: Cmd + Shift + R
-Windows: Ctrl + F5
-```
-
-## Security note
-
-ห้ามใส่ข้อมูลลับใน frontend/repo เช่น:
-
-```txt
-service_role key
-database password
-Google Apps Script secret
-GitHub token
-```
+หลัง deploy ให้กด `Cmd + Shift + R`

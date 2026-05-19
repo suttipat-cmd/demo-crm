@@ -1,11 +1,11 @@
-/* DEMO CRM v1.2.2
+/* DEMO CRM v1.2.3
    Static SPA for GitHub Pages + Supabase.
    Security rule: never place service_role key, database password, or private token in this file.
 */
 (() => {
   'use strict';
 
-  const APP_VERSION = '1.2.2';
+  const APP_VERSION = '1.2.3';
   const APP_CONFIG = {
     SUPABASE_URL: 'https://hacmassihdqlgkmwoivs.supabase.co',
     SUPABASE_ANON_KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhhY21hc3NpaGRxbGdrbXdvaXZzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkxMjk1ODgsImV4cCI6MjA5NDcwNTU4OH0.TgkJCHaRndMDZY2SANXCjFLdMkHUd_bxJOb0K9Znpa8',
@@ -417,6 +417,9 @@
       case 'admin-responsible-toggle':
         await toggleResponsiblePerson(target.dataset.id, target.dataset.active === 'true');
         break;
+      case 'admin-responsible-delete':
+        await deleteResponsiblePerson(target.dataset.id);
+        break;
       case 'admin-module-toggle':
         await toggleModule(target.dataset.id, target.dataset.active === 'true');
         break;
@@ -736,7 +739,7 @@
           <div class="auth-hero-overlay"></div>
           <div class="auth-hero-content">
             <div class="auth-hero-kicker">CUSTOMER SUPPORT WORKSPACE</div>
-            <h1>จัดการ Demo <br><span>ครบในที่เดียว</span></h1>
+            <h1>จัดการ DEMO<br><span>ครบในที่เดียว</span></h1>
             <p>
               DEMO CRM ช่วยทีม CS ติดตามบริษัทที่ขอทดลองใช้งาน ต่ออายุเดโม
               บันทึกความคืบหน้า และจัดการอีเมลได้เป็นระบบ
@@ -744,7 +747,7 @@
             <div class="auth-hero-points">
               <span>Demo Timeline</span>
               <span>Reminder</span>
-              <span>Export Report</span>
+              <span>Report</span>
             </div>
           </div>
           <div class="auth-hero-footer">
@@ -1414,7 +1417,7 @@
 
     return `
       ${renderTopbar(title, '', `
-        <a class="btn ghost" href="#demos">กลับ</a>
+        <a class="icon-button back-button" href="#demos" title="กลับ" aria-label="กลับ">←</a>
       `)}
       ${draft ? `
         <div class="config-warning">
@@ -1547,7 +1550,7 @@
 
     return `
       ${renderTopbar(row.company.company_name, '', `
-        <a class="btn ghost" href="#demos">กลับ</a>
+        <a class="icon-button back-button" href="#demos" title="กลับ" aria-label="กลับ">←</a>
         <a class="btn secondary" href="#demos/edit/${row.round.id}">แก้ไข</a>
         <a class="btn success" href="#demos/new/renew/${row.round.id}">ต่ออายุ</a>
         <button class="btn primary" data-action="email-preview" data-id="${row.round.id}">ตัวอย่างอีเมล</button>
@@ -1773,25 +1776,35 @@
             </tr>
           </thead>
           <tbody>
-            ${State.responsiblePeople.map((person) => `
-              <tr>
-                <td>
-                  <form data-action="admin-responsible-save" id="responsible-${person.id}">
-                    <input type="hidden" name="id" value="${person.id}">
-                    <input class="input" name="name" value="${escapeAttr(person.name || '')}" required>
-                  </form>
-                </td>
-                <td><input class="input" type="email" name="email" value="${escapeAttr(person.email || '')}" form="responsible-${person.id}" required></td>
-                <td><input class="input" name="phone" value="${escapeAttr(person.phone || '')}" form="responsible-${person.id}"></td>
-                <td>
-                  <select class="select" name="is_active" form="responsible-${person.id}">
-                    ${option('true', 'เปิดใช้งาน', String(Boolean(person.is_active)))}
-                    ${option('false', 'ปิดใช้งาน', String(Boolean(person.is_active)))}
-                  </select>
-                </td>
-                <td><button class="btn small primary" type="submit" form="responsible-${person.id}">บันทึก</button></td>
-              </tr>
-            `).join('')}
+            ${State.responsiblePeople.map((person) => {
+              const usageCount = getResponsibleUsageCount(person.id);
+              const canDelete = usageCount === 0;
+              return `
+                <tr>
+                  <td>
+                    <form data-action="admin-responsible-save" id="responsible-${person.id}">
+                      <input type="hidden" name="id" value="${person.id}">
+                      <input class="input" name="name" value="${escapeAttr(person.name || '')}" required>
+                    </form>
+                  </td>
+                  <td><input class="input" type="email" name="email" value="${escapeAttr(person.email || '')}" form="responsible-${person.id}" required></td>
+                  <td><input class="input" name="phone" value="${escapeAttr(person.phone || '')}" form="responsible-${person.id}"></td>
+                  <td>
+                    <select class="select" name="is_active" form="responsible-${person.id}">
+                      ${option('true', 'เปิดใช้งาน', String(Boolean(person.is_active)))}
+                      ${option('false', 'ปิดใช้งาน', String(Boolean(person.is_active)))}
+                    </select>
+                  </td>
+                  <td>${usageCount ? `${usageCount.toLocaleString('th-TH')} รายการ` : '<span class="muted">ยังไม่ถูกใช้</span>'}</td>
+                  <td>
+                    <div class="actions">
+                      <button class="btn small primary" type="submit" form="responsible-${person.id}">บันทึก</button>
+                      ${canDelete ? `<button class="btn small danger" type="button" data-action="admin-responsible-delete" data-id="${person.id}">ลบ</button>` : ''}
+                    </div>
+                  </td>
+                </tr>
+              `;
+            }).join('')}
           </tbody>
         </table>
       </div>
@@ -1951,7 +1964,7 @@
   function renderNotFound() {
     return `
       ${renderTopbar('ไม่พบหน้า')}
-      <section class="card empty"><a class="btn primary" href="#dashboard">กลับแดชบอร์ด</a></section>
+      <section class="card empty"><a class="icon-button back-button" href="#dashboard" title="กลับแดชบอร์ด" aria-label="กลับแดชบอร์ด">←</a></section>
     `;
   }
 
@@ -2424,7 +2437,32 @@
     toast('อัปเดตผู้รับผิดชอบแล้ว', 'success');
   }
 
-  async function saveModule(form) {
+  
+  async function deleteResponsiblePerson(id) {
+    const person = State.responsiblePeople.find((item) => item.id === id);
+    if (!person) return;
+
+    const usageCount = getResponsibleUsageCount(id);
+    if (usageCount > 0) {
+      toast('ลบไม่ได้ เพราะผู้รับผิดชอบนี้ถูกใช้งานอยู่', 'error');
+      return;
+    }
+
+    if (!window.confirm(`ลบผู้รับผิดชอบ "${person.name}" หรือไม่?`)) return;
+
+    const { error } = await State.sb.from('responsible_people').delete().eq('id', id);
+    if (error) throw error;
+
+    await loadAllData();
+    render();
+    toast('ลบผู้รับผิดชอบแล้ว', 'success');
+  }
+
+  function getResponsibleUsageCount(personId) {
+    return State.rounds.filter((round) => getRoundResponsiblePersonId(round) === personId).length;
+  }
+
+async function saveModule(form) {
     const id = form.id.value;
     const payload = {
       name: form.name.value.trim(),
