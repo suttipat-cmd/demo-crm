@@ -4,8 +4,8 @@ DEMO CRM สำหรับทีม CS ใช้จัดการบริษ�
 
 ## Version
 
-- Current: `v1.3.0`
-- Type: User Profile + Admin Fix Release
+- Current: `v1.3.1`
+- Type: Demo Day Logic Clarification Release
 - SQL required:
   - `supabase/009_v1_2_9_activity_log_source.sql` ถ้ายังไม่เคยรันจาก v1.2.9
   - `supabase/010_v1_3_0_profile_avatar.sql`
@@ -24,6 +24,17 @@ supabase/
   010_v1_3_0_profile_avatar.sql
   reset_transaction_data_keep_masters.sql
 ```
+
+
+## v1.3.1 Update
+
+- เปลี่ยนคอลัมน์ `วันทั้งหมด` ในหน้ารายการเดโมเป็น `วันรอบนี้`
+- เพิ่มคอลัมน์ `วันสะสมทั้งหมด` เพื่อรวมจำนวนวัน demo ทุก round ของบริษัทนั้น
+- หน้า detail แสดง `วันรอบนี้`, `วันคงเหลือ`, และ `วันสะสมทั้งหมด`
+- ประวัติรอบเดโมแสดงจำนวนวันของแต่ละรอบให้ชัดเจน
+- Export รายการเดโมเพิ่มข้อมูล `วันรอบนี้` และ `วันสะสมทั้งหมด`
+- ไม่ต้องรัน SQL เพิ่ม
+- รักษา logic บันทึกความคืบหน้าให้ใช้เฉพาะ log ที่ user พิมพ์เอง ไม่เอา system log มาคำนวณบันทึกล่าสุด
 
 ## สิ่งที่ปรับใน v1.3.0
 
@@ -59,7 +70,7 @@ supabase/009_v1_2_9_activity_log_source.sql
 
 ```bash
 git add .
-git commit -m "Release v1.3.0 user profile avatars and admin fix"
+git commit -m "Release v1.3.1 demo day calculation"
 git push
 ```
 

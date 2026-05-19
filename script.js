@@ -1,11 +1,11 @@
-/* DEMO CRM v1.3.0
+/* DEMO CRM v1.3.1
    Static SPA for GitHub Pages + Supabase.
    Security rule: never place service_role key, database password, or private token in this file.
 */
 (() => {
   'use strict';
 
-  const APP_VERSION = '1.3.0';
+  const APP_VERSION = '1.3.1';
   const APP_CONFIG = {
     SUPABASE_URL: 'https://hacmassihdqlgkmwoivs.supabase.co',
     SUPABASE_ANON_KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhhY21hc3NpaGRxbGdrbXdvaXZzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkxMjk1ODgsImV4cCI6MjA5NDcwNTU4OH0.TgkJCHaRndMDZY2SANXCjFLdMkHUd_bxJOb0K9Znpa8',
@@ -1455,8 +1455,9 @@
               <th>ผู้รับผิดชอบ</th>
               <th>เริ่ม</th>
               <th>สิ้นสุด</th>
-              <th>วันทั้งหมด</th>
+              <th>วันรอบนี้</th>
               <th>วันคงเหลือ</th>
+              <th>วันสะสมทั้งหมด</th>
               <th>โมดูล</th>
               <th>บันทึกล่าสุด</th>
               <th>แก้ไขล่าสุด</th>
@@ -1477,6 +1478,7 @@
                   <td>${formatDate(row.round.end_date)}</td>
                   <td>${row.totalDays}</td>
                   <td>${formatRemaining(row.remainingDays)}</td>
+                  <td>${row.accumulatedDays}</td>
                   <td>${escapeHTML(row.modules.map((module) => module.name).join(', ') || '-')}</td>
                   <td>${escapeHTML(row.latestLog?.message || '-')}</td>
                   <td>${formatDateTime(row.round.updated_at)}</td>
@@ -1605,6 +1607,7 @@
                 <span>ผู้ติดต่อ: ${escapeHTML(row.company.contact_name || '-')}</span>
                 <span>ผู้รับผิดชอบ: ${escapeHTML(displayName(row.responsible))}</span>
                 <span>เดโม: ${formatDate(row.round.start_date)} - ${formatDate(row.round.end_date)}</span>
+                <span>วันรอบนี้: ${row.totalDays} วัน · สะสม: ${row.accumulatedDays} วัน</span>
               </div>
               <div class="report-module-tags">
                 ${row.modules.length
@@ -1830,8 +1833,9 @@
             <dt>ผู้รับผิดชอบ</dt><dd>${escapeHTML(displayName(row.responsible))}</dd>
             <dt>วันที่เริ่ม</dt><dd>${formatDate(row.round.start_date)}</dd>
             <dt>วันที่สิ้นสุด</dt><dd>${formatDate(row.round.end_date)}</dd>
-            <dt>วันทั้งหมด</dt><dd>${row.totalDays}</dd>
+            <dt>วันรอบนี้</dt><dd>${row.totalDays}</dd>
             <dt>วันคงเหลือ</dt><dd>${formatRemaining(row.remainingDays)}</dd>
+            <dt>วันสะสมทั้งหมด</dt><dd>${row.accumulatedDays}</dd>
             <dt>โมดูล</dt><dd>${escapeHTML(row.modules.map((module) => module.name).join(', ') || '-')}</dd>
             <dt>ต่ออายุครั้งที่</dt><dd>${row.round.renewal_no || 0}</dd>
           </dl>
@@ -1863,7 +1867,7 @@
                         </div>
                         <a class="btn small ghost round-link" href="#demos/${item.round.id}" aria-label="ดูรอบเดโมนี้">ดูรอบนี้</a>
                       </div>
-                      <p class="round-meta">${formatDate(item.round.start_date)} - ${formatDate(item.round.end_date)} · ${item.modules.map((module) => escapeHTML(module.name)).join(', ') || '-'}</p>
+                      <p class="round-meta">${formatDate(item.round.start_date)} - ${formatDate(item.round.end_date)} · ${item.totalDays} วัน · ${item.modules.map((module) => escapeHTML(module.name)).join(', ') || '-'}</p>
                     </div>
                   </div>
                 `;
@@ -3062,6 +3066,17 @@ async function saveModule(form) {
   }
 
   function getAllDemoRows() {
+    const accumulatedDaysByCompany = new Map();
+
+    for (const round of State.rounds) {
+      if (!round?.company_id) continue;
+      const roundDays = Math.max(daysBetween(round.start_date, round.end_date) + 1, 0);
+      accumulatedDaysByCompany.set(
+        round.company_id,
+        (accumulatedDaysByCompany.get(round.company_id) || 0) + roundDays
+      );
+    }
+
     return State.rounds
       .map((round) => {
         const company = State.companies.find((item) => item.id === round.company_id);
@@ -3078,8 +3093,9 @@ async function saveModule(form) {
           .filter((log) => log.company_id === company.id && isManualLog(log))
           .sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
         const effectiveStatus = computeStatus(round);
-        const totalDays = daysBetween(round.start_date, round.end_date) + 1;
+        const totalDays = Math.max(daysBetween(round.start_date, round.end_date) + 1, 0);
         const remainingDays = daysBetween(todayISO(), round.end_date);
+        const accumulatedDays = accumulatedDaysByCompany.get(company.id) || totalDays;
 
         return {
           company,
@@ -3089,7 +3105,8 @@ async function saveModule(form) {
           responsible,
           latestLog: logs[0] || null,
           effectiveStatus,
-          totalDays: Math.max(totalDays, 0),
+          totalDays,
+          accumulatedDays,
           remainingDays
         };
       })
@@ -3322,8 +3339,9 @@ async function saveModule(form) {
       'ผู้รับผิดชอบ': displayName(row.responsible),
       'วันที่เริ่ม': formatDate(row.round.start_date),
       'วันที่สิ้นสุด': formatDate(row.round.end_date),
-      'จำนวนวันทั้งหมด': row.totalDays,
+      'วันรอบนี้': row.totalDays,
       'จำนวนวันคงเหลือ': Math.max(row.remainingDays, 0),
+      'วันสะสมทั้งหมด': row.accumulatedDays,
       'โมดูล': row.modules.map((m) => m.name).join(', '),
       'บัญชีเดโม': row.accounts.map((a) => a.login_email).join(', '),
       'จำนวนครั้งที่ต่ออายุ': row.round.renewal_no || 0,
