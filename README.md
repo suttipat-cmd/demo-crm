@@ -4,9 +4,11 @@ DEMO CRM สำหรับทีม CS ใช้จัดการบริษ�
 
 ## Version
 
-- Current: `v1.2.9`
-- Type: Stabilization Release
-- SQL required: `supabase/009_v1_2_9_activity_log_source.sql`
+- Current: `v1.3.0`
+- Type: User Profile + Admin Fix Release
+- SQL required:
+  - `supabase/009_v1_2_9_activity_log_source.sql` ถ้ายังไม่เคยรันจาก v1.2.9
+  - `supabase/010_v1_3_0_profile_avatar.sql`
 
 ## Files
 
@@ -19,26 +21,33 @@ apps-script/
   Code.gs
 supabase/
   009_v1_2_9_activity_log_source.sql
+  010_v1_3_0_profile_avatar.sql
   reset_transaction_data_keep_masters.sql
 ```
 
-## สิ่งที่ปรับใน v1.2.9
+## สิ่งที่ปรับใน v1.3.0
 
-- ใช้ base จาก v1.2.8 และแก้แบบ stabilization เพื่อไม่ให้ regression
-- sync version/cache เป็น v1.2.9 ทุกจุด
-- คงหน้า Login redesign, Branding/Logo, Favicon, Notification และหน้า Report จากรุ่นก่อนหน้า
-- คง Apps Script email sender ไว้ใน package
-- แยก `activity_logs.source` เป็น `manual/system`
-- บันทึกความคืบหน้าและรายงานแสดงเฉพาะ log ที่ user พิมพ์เอง
-- วันที่/เวลาในระบบและอีเมลใช้รูปแบบ `dd/mm/yyyy` หรือ `dd/mm/yyyy hh:mm` โดยใช้ปี ค.ศ.
-- user ส่งอีเมลแจ้งข้อมูล demo ได้ 1 ครั้งต่อ demo round
-- admin ส่งซ้ำได้
-- เพิ่ม loading/disabled ให้ action สำคัญเพิ่มเติมเพื่อลดการกดซ้ำ
-- แนบ SQL reset สำหรับล้างข้อมูลทดสอบโดยเก็บ master data
+- เพิ่มรูปโปรไฟล์ผู้ใช้ในเมนู `ตั้งค่าระบบ → ผู้ใช้ระบบ`
+- admin อัปโหลดรูปโปรไฟล์ให้แต่ละผู้ใช้ได้
+- รูปโปรไฟล์แสดงเป็นกรอบวงกลม
+- รองรับ PNG / JPG / WebP ขนาดไม่เกิน 300KB
+- เก็บรูปเป็น base64 ใน `profiles.avatar_data_uri`
+- แสดงรูปโปรไฟล์ที่มุมขวาบนของเว็บ
+- แสดงรูปโปรไฟล์ในตารางผู้ใช้ระบบ
+- แสดงรูปผู้บันทึกใน activity timeline
+- แก้ error ตอน admin บันทึกสถานะผู้ใช้ (`is_active is not defined`)
+- ถ้าบัญชีถูกปิดใช้งานแล้ว login จะขึ้นข้อความ: `บัญชีนี้ถูกปิดใช้งาน กรุณาติดต่อผู้ดูแลระบบ`
+- sync version/cache เป็น v1.3.0
 
 ## วิธีติดตั้ง / Deploy
 
 1. รัน SQL migration ใน Supabase SQL Editor:
+
+```txt
+supabase/010_v1_3_0_profile_avatar.sql
+```
+
+ถ้ายังไม่เคยรัน migration ของ v1.2.9 ให้รันไฟล์นี้ก่อน:
 
 ```txt
 supabase/009_v1_2_9_activity_log_source.sql
@@ -50,7 +59,7 @@ supabase/009_v1_2_9_activity_log_source.sql
 
 ```bash
 git add .
-git commit -m "Release v1.2.9 stabilization"
+git commit -m "Release v1.3.0 user profile avatars and admin fix"
 git push
 ```
 
@@ -87,7 +96,7 @@ Who has access: Anyone
 นำ Web App URL ไปใส่ใน:
 
 ```txt
-ตั้งค่าระบบ → การตั้งค่า → Google Apps Script Web App URL
+ตั้งค่าระบบ → ตั้งค่าอีเมล → Google Apps Script Web App URL
 ```
 
 ห้ามใส่ `service_role key`, database password หรือ secret ใด ๆ ใน frontend หรือ repo
@@ -108,33 +117,24 @@ supabase/reset_transaction_data_keep_masters.sql
 - activity_logs
 - email_logs
 
-และจะเก็บ:
-- users / profiles
+และเก็บ master:
+- profiles/users รวมรูปโปรไฟล์
 - responsible_people
 - modules
 - email_templates
-- settings / logo / fixed CC
+- settings/logo/fixed CC
 
 ควร backup database ก่อนรันจริง
 
-## Checklist ก่อนส่ง user ใช้งานจริง
+## Production checklist สั้น ๆ
 
-- [ ] Login / Logout ใช้งานได้
-- [ ] Admin เข้าเมนูตั้งค่าระบบได้
-- [ ] User เข้าเมนูตั้งค่าระบบไม่ได้
-- [ ] สร้างเดโมพร้อมหลายอีเมลและหลายบัญชีเดโมได้
-- [ ] ต่ออายุแล้วรายการหลักยังแสดง 1 บริษัท = 1 record ล่าสุด
-- [ ] บันทึกความคืบหน้าแสดงเฉพาะ log ที่ user พิมพ์เอง
-- [ ] วันที่ทุกจุดเป็น `dd/mm/yyyy` หรือ `dd/mm/yyyy hh:mm`
-- [ ] User ส่งอีเมลแจ้งข้อมูล demo ได้ครั้งเดียว
-- [ ] Admin ส่งอีเมลซ้ำได้
-- [ ] Apps Script ส่งอีเมลจริงได้
-- [ ] Notification badge/popup แสดงข้อมูลถูกต้อง
-- [ ] หน้า Report แสดงสรุปรายบริษัทถูกต้อง
-- [ ] Export รายงานทำงานได้
-- [ ] RLS เปิดครบทุก table
-- [ ] ไม่มี service_role key / database password / secret ใน repo
-
-## Rollback
-
-ถ้า deploy แล้วมีปัญหา ให้ revert commit ล่าสุดหรือกลับไปใช้ ZIP เวอร์ชันก่อนหน้า แล้ว hard refresh browser หลัง GitHub Pages deploy เสร็จ
+- [ ] รัน SQL migration ครบ
+- [ ] login ด้วย admin ได้
+- [ ] admin แก้ชื่อ/role/status ผู้ใช้ได้
+- [ ] admin อัปโหลด/ลบรูปโปรไฟล์ผู้ใช้ได้
+- [ ] user ที่ถูกปิดใช้งาน login แล้วเห็นข้อความแจ้งเตือน
+- [ ] สร้าง demo ได้
+- [ ] เพิ่มบันทึกความคืบหน้าได้
+- [ ] ส่งอีเมลผ่าน Apps Script ได้
+- [ ] รายงาน/notification/export ทำงาน
+- [ ] ตรวจว่าไม่มี service_role key หรือ secret ใน repo

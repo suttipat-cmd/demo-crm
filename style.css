@@ -3537,3 +3537,66 @@ tbody tr:hover {
     grid-template-columns: 1fr;
   }
 }
+
+
+/* v1.3.0 user profile avatars */
+.profile-avatar.has-image,
+.profile-avatar img {
+  object-fit: cover;
+}
+
+.profile-avatar.has-image {
+  display: block;
+  border: 2px solid #fff;
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.14);
+}
+
+.admin-avatar-preview {
+  width: 44px;
+  height: 44px;
+  font-size: 13px;
+  flex: 0 0 auto;
+}
+
+.avatar-admin-cell {
+  min-width: 190px;
+  display: grid;
+  grid-template-columns: 44px auto auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.avatar-admin-cell .small-text {
+  grid-column: 1 / -1;
+}
+
+.avatar-upload-button {
+  position: relative;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.visually-hidden {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  padding: 0 !important;
+  margin: -1px !important;
+  overflow: hidden !important;
+  clip: rect(0, 0, 0, 0) !important;
+  white-space: nowrap !important;
+  border: 0 !important;
+}
+
+.timeline-author {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.timeline-avatar {
+  width: 24px;
+  height: 24px;
+  font-size: 10px;
+  flex: 0 0 auto;
+}

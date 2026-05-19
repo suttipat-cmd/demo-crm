@@ -1,11 +1,11 @@
-/* DEMO CRM v1.2.9
+/* DEMO CRM v1.3.0
    Static SPA for GitHub Pages + Supabase.
    Security rule: never place service_role key, database password, or private token in this file.
 */
 (() => {
   'use strict';
 
-  const APP_VERSION = '1.2.9';
+  const APP_VERSION = '1.3.0';
   const APP_CONFIG = {
     SUPABASE_URL: 'https://hacmassihdqlgkmwoivs.supabase.co',
     SUPABASE_ANON_KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhhY21hc3NpaGRxbGdrbXdvaXZzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkxMjk1ODgsImV4cCI6MjA5NDcwNTU4OH0.TgkJCHaRndMDZY2SANXCjFLdMkHUd_bxJOb0K9Znpa8',
@@ -30,6 +30,7 @@
   const DEFAULT_LOG_TYPE = 'หมายเหตุทั่วไป';
   const DEMO_DRAFT_PREFIX = 'demo-crm:v1.1.0:demo-draft:';
   const BRAND_LOGO_CACHE_KEY = 'demo-crm:brand-logo-data-uri';
+  const PROFILE_AVATAR_MAX_BYTES = 300 * 1024;
   const DASHBOARD_TABLE_PAGE_SIZE = 10;
   const DEMO_LIST_PAGE_SIZE = 20;
   const REPORT_PAGE_SIZE = 20;
@@ -375,6 +376,9 @@
           await resetBrandLogo();
         });
         break;
+      case 'profile-avatar-clear':
+        clearProfileAvatar(target);
+        break;
       case 'modal-close':
         closeModal();
         break;
@@ -490,6 +494,11 @@
       return;
     }
 
+    if (target.matches('[data-avatar-input]')) {
+      await previewProfileAvatarUpload(target);
+      return;
+    }
+
     if (target.matches('[data-filter]')) {
       const key = target.dataset.filter;
       if (key === 'nearOnly') {
@@ -591,7 +600,6 @@
 
     const { error } = await State.sb.auth.signInWithPassword({ email, password });
     if (error) throw error;
-    toast('เข้าสู่ระบบสำเร็จ', 'success');
     location.hash = '#dashboard';
   }
 
@@ -635,6 +643,7 @@
     }
 
     if (!State.profile.is_active) {
+      toast('บัญชีนี้ถูกปิดใช้งาน กรุณาติดต่อผู้ดูแลระบบ', 'error');
       await State.sb.auth.signOut();
       throw new Error('บัญชีนี้ถูกปิดใช้งาน กรุณาติดต่อผู้ดูแลระบบ');
     }
@@ -881,7 +890,7 @@
               ${State.notificationsOpen ? renderNotificationPanel(notifications) : ''}
             </div>
             <div class="profile-chip" title="${escapeAttr(State.profile?.email || '')}">
-              <span class="profile-avatar">${escapeHTML(initials(profileName))}</span>
+              ${renderProfileAvatar(State.profile, 'profile-avatar')}
               <span class="profile-text">
                 <strong>${escapeHTML(profileName)}</strong>
                 <small>${escapeHTML(roleLabel(State.profile?.role || ''))}</small>
@@ -908,6 +917,83 @@
       '#admin': '⚙'
     };
     return `<a href="${hash}" class="top-nav-link ${active ? 'active' : ''}" title="${escapeAttr(label)}"><span>${escapeHTML(icons[hash] || '')}</span>${escapeHTML(label)}</a>`;
+  }
+
+
+  function getProfileAvatarDataUri(profile) {
+    const value = profile?.avatar_data_uri || '';
+    return isValidLogoDataUri(value) ? value : '';
+  }
+
+  function renderProfileAvatar(profile, className = 'profile-avatar') {
+    const avatar = getProfileAvatarDataUri(profile);
+    const name = displayName(profile);
+    if (avatar) {
+      return `<img class="${escapeAttr(className)} has-image" src="${escapeAttr(avatar)}" alt="${escapeAttr(name)}">`;
+    }
+    return `<span class="${escapeAttr(className)}">${escapeHTML(initials(name))}</span>`;
+  }
+
+  async function previewProfileAvatarUpload(input) {
+    const file = input.files?.[0];
+    if (!file) return;
+
+    const allowed = ['image/png', 'image/jpeg', 'image/webp'];
+    if (!allowed.includes(file.type)) {
+      input.value = '';
+      toast('รองรับเฉพาะ PNG, JPG หรือ WebP', 'warning');
+      return;
+    }
+
+    if (file.size > PROFILE_AVATAR_MAX_BYTES) {
+      input.value = '';
+      toast('รูปโปรไฟล์ต้องไม่เกิน 300KB', 'warning');
+      return;
+    }
+
+    const dataUri = await readFileAsDataURL(file);
+    const formId = input.getAttribute('form');
+    const form = formId ? document.getElementById(formId) : input.closest('form');
+    const hidden = form?.querySelector('[name="avatar_data_uri"]');
+    const cell = input.closest('.avatar-admin-cell');
+    const preview = cell?.querySelector('.admin-avatar-preview');
+    const fileName = cell?.querySelector('[data-avatar-file-name]');
+
+    if (hidden) hidden.value = dataUri;
+    if (preview) {
+      if (preview.tagName === 'IMG') {
+        preview.src = dataUri;
+      } else {
+        const img = document.createElement('img');
+        img.className = preview.className + ' has-image';
+        img.alt = 'รูปโปรไฟล์';
+        img.src = dataUri;
+        preview.replaceWith(img);
+      }
+    }
+    if (fileName) fileName.textContent = `${file.name} · ${(file.size / 1024).toFixed(1)} KB`;
+  }
+
+  function clearProfileAvatar(button) {
+    const formId = button.dataset.formId;
+    const form = formId ? document.getElementById(formId) : button.closest('form');
+    const hidden = form?.querySelector('[name="avatar_data_uri"]');
+    const cell = button.closest('.avatar-admin-cell');
+    const preview = cell?.querySelector('.admin-avatar-preview');
+    const fileInput = cell?.querySelector('[data-avatar-input]');
+    const fileName = cell?.querySelector('[data-avatar-file-name]');
+    const profileId = form?.querySelector('[name="id"]')?.value;
+    const profile = State.profiles.find((item) => item.id === profileId);
+
+    if (hidden) hidden.value = '';
+    if (fileInput) fileInput.value = '';
+    if (preview) {
+      const span = document.createElement('span');
+      span.className = 'profile-avatar admin-avatar-preview';
+      span.textContent = initials(displayName(profile));
+      preview.replaceWith(span);
+    }
+    if (fileName) fileName.textContent = 'ล้างรูปแล้ว กดบันทึกเพื่อยืนยัน';
   }
 
   
@@ -1836,7 +1922,10 @@
               <div class="timeline-date">${formatDateTime(log.created_at)}</div>
               <div class="timeline-body">
                 <div class="actions timeline-head">
-                  <span class="muted small-text">โดย ${escapeHTML(displayName(author))}</span>
+                  <span class="timeline-author">
+                    ${renderProfileAvatar(author, 'profile-avatar timeline-avatar')}
+                    <span class="muted small-text">โดย ${escapeHTML(displayName(author))}</span>
+                  </span>
                   ${canEdit ? `
                     <div class="actions">
                       <button class="btn small ghost" data-action="log-edit" data-id="${log.id}">แก้ไข</button>
@@ -1888,39 +1977,55 @@
         <table>
           <thead>
             <tr>
+              <th>รูปโปรไฟล์</th>
               <th>อีเมล</th>
               <th>ชื่อที่แสดง</th>
               <th>สิทธิ์</th>
               <th>สถานะ</th>
               <th>การใช้งาน</th>
-              <th>จัดการ</th>
             </tr>
           </thead>
           <tbody>
-            ${State.profiles.map((profile) => `
-              <tr>
-                <td>${escapeHTML(profile.email)}</td>
-                <td>
-                  <form data-action="admin-profile-save" id="profile-${profile.id}">
-                    <input type="hidden" name="id" value="${profile.id}">
-                    <input class="input" name="full_name" value="${escapeAttr(profile.full_name || '')}">
-                  </form>
-                </td>
-                <td>
-                  <select class="select" name="role" form="profile-${profile.id}">
-                    ${option('user', 'ผู้ใช้', profile.role)}
-                    ${option('admin', 'ผู้ดูแล', profile.role)}
-                  </select>
-                </td>
-                <td>
-                  <select class="select" name="is_active" form="profile-${profile.id}">
-                    ${option('true', 'เปิดใช้งาน', String(Boolean(profile.is_active)))}
-                    ${option('false', 'ปิดใช้งาน', String(Boolean(profile.is_active)))}
-                  </select>
-                </td>
-                <td><button class="btn small primary" type="submit" form="profile-${profile.id}">บันทึก</button></td>
-              </tr>
-            `).join('')}
+            ${State.profiles.map((profile) => {
+              const formId = `profile-${profile.id}`;
+              const avatar = getProfileAvatarDataUri(profile);
+              return `
+                <tr>
+                  <td>
+                    <form data-action="admin-profile-save" id="${formId}">
+                      <input type="hidden" name="id" value="${profile.id}">
+                      <input type="hidden" name="avatar_data_uri" value="${escapeAttr(avatar)}">
+                    </form>
+                    <div class="avatar-admin-cell">
+                      ${renderProfileAvatar(profile, 'profile-avatar admin-avatar-preview')}
+                      <label class="btn small ghost avatar-upload-button">
+                        เลือกรูป
+                        <input class="visually-hidden" type="file" accept="image/png,image/jpeg,image/webp" data-avatar-input form="${formId}">
+                      </label>
+                      ${avatar ? `<button class="btn small danger" type="button" data-action="profile-avatar-clear" data-form-id="${formId}">ลบรูป</button>` : ''}
+                      <div class="muted small-text" data-avatar-file-name>ไม่เกิน 300KB</div>
+                    </div>
+                  </td>
+                  <td>${escapeHTML(profile.email)}</td>
+                  <td>
+                    <input class="input" name="full_name" value="${escapeAttr(profile.full_name || '')}" form="${formId}">
+                  </td>
+                  <td>
+                    <select class="select" name="role" form="${formId}">
+                      ${option('user', 'ผู้ใช้', profile.role)}
+                      ${option('admin', 'ผู้ดูแล', profile.role)}
+                    </select>
+                  </td>
+                  <td>
+                    <select class="select" name="is_active" form="${formId}">
+                      ${option('true', 'เปิดใช้งาน', String(Boolean(profile.is_active)))}
+                      ${option('false', 'ปิดใช้งาน', String(Boolean(profile.is_active)))}
+                    </select>
+                  </td>
+                  <td><button class="btn small primary" type="submit" form="${formId}">บันทึก</button></td>
+                </tr>
+              `;
+            }).join('')}
           </tbody>
         </table>
       </div>
@@ -1954,7 +2059,6 @@
               <th>เบอร์โทร</th>
               <th>สถานะ</th>
               <th>การใช้งาน</th>
-              <th>จัดการ</th>
             </tr>
           </thead>
           <tbody>
@@ -2020,7 +2124,6 @@
               <th>ลำดับ</th>
               <th>สถานะ</th>
               <th>การใช้งาน</th>
-              <th>จัดการ</th>
             </tr>
           </thead>
           <tbody>
@@ -2730,11 +2833,21 @@ async function saveModule(form) {
     const fullName = form.full_name.value.trim();
     const role = form.role.value;
     const isActive = form.is_active.value === 'true';
+    const avatarDataUri = form.avatar_data_uri?.value.trim() || '';
+
+    if (avatarDataUri && !isValidLogoDataUri(avatarDataUri)) {
+      throw new Error('รูปโปรไฟล์ไม่ถูกต้อง รองรับเฉพาะ PNG, JPG หรือ WebP');
+    }
+
+    if (avatarDataUri && avatarDataUri.length > 420000) {
+      throw new Error('รูปโปรไฟล์ใหญ่เกินไป กรุณาเลือกไฟล์ไม่เกิน 300KB');
+    }
 
     const { error } = await State.sb.from('profiles').update({
       full_name: fullName,
       role,
-      is_active
+      is_active: isActive,
+      avatar_data_uri: avatarDataUri || null
     }).eq('id', id);
     if (error) throw error;
 
