@@ -1,11 +1,11 @@
-/* DEMO CRM v1.2.4
+/* DEMO CRM v1.2.5
    Static SPA for GitHub Pages + Supabase.
    Security rule: never place service_role key, database password, or private token in this file.
 */
 (() => {
   'use strict';
 
-  const APP_VERSION = '1.2.4';
+  const APP_VERSION = '1.2.5';
   const APP_CONFIG = {
     SUPABASE_URL: 'https://hacmassihdqlgkmwoivs.supabase.co',
     SUPABASE_ANON_KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhhY21hc3NpaGRxbGdrbXdvaXZzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkxMjk1ODgsImV4cCI6MjA5NDcwNTU4OH0.TgkJCHaRndMDZY2SANXCjFLdMkHUd_bxJOb0K9Znpa8',
@@ -32,6 +32,7 @@
   const BRAND_LOGO_CACHE_KEY = 'demo-crm:brand-logo-data-uri';
   const DASHBOARD_TABLE_PAGE_SIZE = 10;
   const DEMO_LIST_PAGE_SIZE = 20;
+  const REPORT_PAGE_SIZE = 20;
 
   const State = {
     sb: null,
@@ -76,6 +77,8 @@
       customers: 1
     },
     demoPage: 1,
+    reportPage: 1,
+    reportSearch: '',
     adminTab: 'users'
   };
 
@@ -406,6 +409,9 @@
       case 'report-export':
         exportDemoRows();
         break;
+      case 'company-report-export':
+        exportCompanyReportRows();
+        break;
       case 'export-current':
       case 'export-all':
         exportDemoRows();
@@ -494,6 +500,14 @@
     const target = event.target;
     if (target.matches('[data-filter="search"]')) {
       State.filters.search = target.value;
+      State.demoPage = 1;
+      render();
+      return;
+    }
+
+    if (target.matches('[data-report-search]')) {
+      State.reportSearch = target.value;
+      State.reportPage = 1;
       render();
       return;
     }
@@ -831,6 +845,7 @@
             ${navLink('#dashboard', 'แดชบอร์ด', route)}
             ${navLink('#demos', 'รายการเดโม', route)}
             ${navLink('#demos/new', 'สร้างเดโม', route)}
+            ${navLink('#reports', 'รายงาน', route)}
             ${isAdmin ? navLink('#admin', 'ตั้งค่าระบบ', route) : ''}
           </nav>
           <div class="header-tools">
@@ -865,6 +880,7 @@
       '#dashboard': '▦',
       '#demos': '▤',
       '#demos/new': '+',
+      '#reports': '▧',
       '#admin': '⚙'
     };
     return `<a href="${hash}" class="top-nav-link ${active ? 'active' : ''}" title="${escapeAttr(label)}"><span>${escapeHTML(icons[hash] || '')}</span>${escapeHTML(label)}</a>`;
@@ -1107,6 +1123,7 @@
 
     if (route === '#dashboard' || route === '') return renderDashboard();
     if (route === '#demos') return renderDemoList();
+    if (route === '#reports') return renderReportPage();
     if (route === '#demos/new') return renderDemoForm();
     if (route.startsWith('#demos/new/renew/')) return renderDemoForm({ renewFromId: route.replace('#demos/new/renew/', '') });
     if (route.startsWith('#demos/edit/')) return renderDemoForm({ editId: route.replace('#demos/edit/', '') });
@@ -1370,6 +1387,105 @@
       </div>
     `;
   }
+
+
+  function renderReportPage() {
+    const rows = getFilteredCompanyReportRows();
+    const pageInfo = paginateRows(rows, State.reportPage, REPORT_PAGE_SIZE);
+    State.reportPage = pageInfo.page;
+    const pageRows = pageInfo.rows;
+
+    return `
+      ${renderTopbar('รายงาน', '', `
+        <button class="btn secondary" data-action="company-report-export">ดึงรายงาน</button>
+      `)}
+      <section class="card report-page-card">
+        <div class="filters">
+          <div class="field search-field">
+            <label>ค้นหา</label>
+            <input class="input" data-report-search value="${escapeAttr(State.reportSearch)}" placeholder="บริษัท ผู้ติดต่อ อีเมล ผู้รับผิดชอบ โมดูล บันทึกล่าสุด">
+          </div>
+        </div>
+        <div class="report-summary">
+          <div class="report-summary-item">
+            <span>บริษัททั้งหมด</span>
+            <strong>${rows.length.toLocaleString('th-TH')}</strong>
+          </div>
+          <div class="report-summary-item">
+            <span>มีบันทึกล่าสุด</span>
+            <strong>${rows.filter((row) => row.latestLog).length.toLocaleString('th-TH')}</strong>
+          </div>
+          <div class="report-summary-item">
+            <span>ยังไม่มีบันทึก</span>
+            <strong>${rows.filter((row) => !row.latestLog).length.toLocaleString('th-TH')}</strong>
+          </div>
+        </div>
+        ${renderCompanyReportTable(pageRows)}
+        ${renderPagination('report', 'companies', pageInfo.page, pageInfo.totalPages, rows.length)}
+      </section>
+    `;
+  }
+
+  function renderCompanyReportTable(rows) {
+    if (!rows.length) return '<div class="empty">ไม่พบข้อมูลรายงาน</div>';
+
+    return `
+      <div class="table-wrap report-table-wrap">
+        <table class="report-table">
+          <thead>
+            <tr>
+              <th>บริษัท</th>
+              <th>ผู้ติดต่อ</th>
+              <th>อีเมลผู้ติดต่อ</th>
+              <th>ผู้รับผิดชอบ</th>
+              <th>โมดูล</th>
+              <th>เดโมล่าสุด</th>
+              <th>บันทึกล่าสุด</th>
+              <th>วันที่บันทึก</th>
+              <th>จัดการ</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rows.map((row) => `
+              <tr>
+                <td>
+                  <a href="#demos/${row.round.id}">
+                    <strong>${escapeHTML(row.company.company_name)}</strong>
+                  </a>
+                  <div class="muted small-text">${statusBadge(row.effectiveStatus)}</div>
+                </td>
+                <td>${escapeHTML(row.company.contact_name || '-')}</td>
+                <td class="cell-ellipsis" title="${escapeAttr((row.company.contact_emails || []).join(', '))}">
+                  ${escapeHTML((row.company.contact_emails || []).join(', ') || '-')}
+                </td>
+                <td>${escapeHTML(displayName(row.responsible))}</td>
+                <td class="cell-ellipsis" title="${escapeAttr(row.modules.map((module) => module.name).join(', ') || '-')}">
+                  ${escapeHTML(row.modules.map((module) => module.name).join(', ') || '-')}
+                </td>
+                <td>
+                  <span>${formatDate(row.round.start_date)} - ${formatDate(row.round.end_date)}</span>
+                  <div class="muted small-text">ต่ออายุครั้งที่ ${Number(row.round.renewal_no || 0).toLocaleString('th-TH')}</div>
+                </td>
+                <td class="report-log-cell">
+                  <div class="${row.latestLog ? 'report-log-message' : 'report-log-empty'}" title="${escapeAttr(row.latestLog?.message || 'ยังไม่มีบันทึก')}">
+                    ${escapeHTML(row.latestLog?.message || 'ยังไม่มีบันทึก')}
+                  </div>
+                </td>
+                <td>${row.latestLog ? formatDateTime(row.latestLog.created_at) : '-'}</td>
+                <td>
+                  <div class="actions">
+                    <a class="btn small ghost" href="#demos/${row.round.id}">ดู</a>
+                    <a class="btn small secondary" href="#demos/edit/${row.round.id}">แก้ไข</a>
+                  </div>
+                </td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
+    `;
+  }
+
 
   function renderDemoForm({ editId = null, renewFromId = null } = {}) {
     const editRow = editId ? getDemoRow(editId) : null;
@@ -2705,6 +2821,8 @@ async function saveModule(form) {
       State.dashboardPages[key] = page;
     } else if (scope === 'demo') {
       State.demoPage = page;
+    } else if (scope === 'report') {
+      State.reportPage = page;
     }
 
     render();
@@ -2913,6 +3031,92 @@ async function saveModule(form) {
       </div>
     `;
   }
+
+
+  function getCompanyReportRows() {
+    return getDemoRows()
+      .map((row) => {
+        const latestLog = getLatestCompanyLog(row.company.id);
+        const fallbackAt = row.round.updated_at || row.round.created_at || row.company.updated_at || row.company.created_at || '';
+        const sortAt = latestLog?.created_at || fallbackAt;
+
+        return {
+          ...row,
+          latestLog,
+          latestLogAt: latestLog?.created_at || '',
+          reportSortAt: sortAt
+        };
+      })
+      .sort((a, b) => {
+        const dateA = new Date(a.reportSortAt || 0).getTime();
+        const dateB = new Date(b.reportSortAt || 0).getTime();
+        if (dateA !== dateB) return dateB - dateA;
+        return String(a.company.company_name || '').localeCompare(String(b.company.company_name || ''), 'th');
+      });
+  }
+
+  function getFilteredCompanyReportRows() {
+    const search = normalize(State.reportSearch);
+    const rows = getCompanyReportRows();
+
+    if (!search) return rows;
+
+    return rows.filter((row) => {
+      const haystack = normalize([
+        row.company.company_name,
+        row.company.contact_name,
+        ...(row.company.contact_emails || []),
+        displayName(row.responsible),
+        row.responsible?.email,
+        row.responsible?.phone,
+        row.effectiveStatus,
+        ...row.modules.map((module) => module.name),
+        row.latestLog?.message,
+        row.latestLog?.log_type
+      ].filter(Boolean).join(' '));
+
+      return haystack.includes(search);
+    });
+  }
+
+  function getLatestCompanyLog(companyId) {
+    return State.activityLogs
+      .filter((log) => log.company_id === companyId)
+      .sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0))[0] || null;
+  }
+
+  function exportCompanyReportRows() {
+    const rows = getFilteredCompanyReportRows();
+    const data = rows.map((row) => ({
+      'ชื่อบริษัท': row.company.company_name,
+      'ชื่อผู้ติดต่อ': row.company.contact_name || '',
+      'อีเมลผู้ติดต่อ': (row.company.contact_emails || []).join(', '),
+      'สถานะปัจจุบัน': row.effectiveStatus,
+      'ผู้รับผิดชอบ': displayName(row.responsible),
+      'อีเมลผู้รับผิดชอบ': row.responsible?.email || '',
+      'เบอร์ผู้รับผิดชอบ': row.responsible?.phone || '',
+      'วันที่เริ่มเดโมล่าสุด': row.round.start_date || '',
+      'วันที่สิ้นสุดเดโมล่าสุด': row.round.end_date || '',
+      'โมดูล': row.modules.map((module) => module.name).join(', '),
+      'จำนวนครั้งที่ต่ออายุ': row.round.renewal_no || 0,
+      'บันทึกล่าสุด': row.latestLog?.message || '',
+      'วันที่บันทึกล่าสุด': row.latestLog?.created_at || '',
+      'ผู้บันทึกล่าสุด': displayName(findProfile(row.latestLog?.created_by))
+    }));
+
+    const filename = `demo-crm-company-report-${todayISO()}.xlsx`;
+
+    if (window.XLSX) {
+      const wb = window.XLSX.utils.book_new();
+      const ws = window.XLSX.utils.json_to_sheet(data);
+      window.XLSX.utils.book_append_sheet(wb, ws, 'Company Report');
+      window.XLSX.writeFile(wb, filename);
+      return;
+    }
+
+    downloadText(filename.replace('.xlsx', '.csv'), toCSV(data), 'text/csv;charset=utf-8');
+  }
+
 
   function exportDemoRows(forceAll = false) {
     const filtered = hasActiveDemoFilters();
