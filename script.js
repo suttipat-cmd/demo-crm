@@ -1,11 +1,11 @@
-/* DEMO CRM v1.2.0
+/* DEMO CRM v1.2.1
    Static SPA for GitHub Pages + Supabase.
    Security rule: never place service_role key, database password, or private token in this file.
 */
 (() => {
   'use strict';
 
-  const APP_VERSION = '1.2.0';
+  const APP_VERSION = '1.2.1';
   const APP_CONFIG = {
     SUPABASE_URL: 'https://hacmassihdqlgkmwoivs.supabase.co',
     SUPABASE_ANON_KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhhY21hc3NpaGRxbGdrbXdvaXZzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkxMjk1ODgsImV4cCI6MjA5NDcwNTU4OH0.TgkJCHaRndMDZY2SANXCjFLdMkHUd_bxJOb0K9Znpa8',
@@ -46,6 +46,8 @@
     loadSeq: 0,
     lastForegroundRefreshAt: 0,
     sidebarCollapsed: localStorage.getItem('demo-crm:sidebar-collapsed') === 'true',
+    notificationsOpen: false,
+    notificationFilter: 'all',
     profiles: [],
     responsiblePeople: [],
     companies: [],
@@ -82,6 +84,7 @@
   document.addEventListener('DOMContentLoaded', boot);
   window.addEventListener('hashchange', () => {
     State.currentRoute = location.hash || '#dashboard';
+    State.notificationsOpen = false;
     render();
   });
 
@@ -310,6 +313,9 @@
         case 'admin-setting-save':
           await saveSettings(form);
           break;
+        case 'admin-brand-save':
+          await saveBrandSettings(form);
+          break;
         case 'admin-profile-save':
           await saveProfileAdmin(form);
           break;
@@ -342,6 +348,24 @@
         State.sidebarCollapsed = !State.sidebarCollapsed;
         localStorage.setItem('demo-crm:sidebar-collapsed', String(State.sidebarCollapsed));
         render();
+        break;
+      case 'notification-toggle':
+        State.notificationsOpen = !State.notificationsOpen;
+        render();
+        break;
+      case 'notification-close':
+        State.notificationsOpen = false;
+        render();
+        break;
+      case 'notification-tab':
+        State.notificationFilter = target.dataset.kind || 'all';
+        render();
+        break;
+      case 'notification-filter':
+        applyNotificationFilter(target.dataset.kind || 'all');
+        break;
+      case 'brand-logo-reset':
+        await resetBrandLogo();
         break;
       case 'modal-close':
         closeModal();
@@ -421,8 +445,13 @@
     }
   }
 
-  function handleChange(event) {
+  async function handleChange(event) {
     const target = event.target;
+
+    if (target.matches('[data-logo-input]')) {
+      await previewLogoUpload(target);
+      return;
+    }
 
     if (target.matches('[data-filter]')) {
       const key = target.dataset.filter;
@@ -697,7 +726,7 @@
       <main class="auth-page">
         <section class="auth-card">
           <div class="brand auth-brand">
-            <img class="brand-logo" src="${BRAND_LOGO_DATA_URI}" alt="DEMO CRM">
+            <img class="brand-logo" src="${getBrandLogoDataUri()}" alt="DEMO CRM">
             <div>
               <h1>DEMO CRM</h1>
               <p>ระบบจัดการเดโมสำหรับทีม CS</p>
@@ -735,12 +764,15 @@
   function renderShell(route) {
     const profileName = displayName(State.profile);
     const isAdmin = userIsAdmin();
+    const notifications = buildNotifications();
+    const notificationCount = notifications.length;
+    const logoSrc = getBrandLogoDataUri();
 
     return `
       <div class="app-layout">
         <header class="app-header">
           <div class="header-brand">
-            <img class="brand-logo" src="${BRAND_LOGO_DATA_URI}" alt="DEMO CRM">
+            <img class="brand-logo" src="${logoSrc}" alt="DEMO CRM">
             <div class="brand-stack">
               <strong>DEMO CRM</strong>
               <span>Customer Support Workspace</span>
@@ -753,7 +785,13 @@
             ${isAdmin ? navLink('#admin', 'ตั้งค่าระบบ', route) : ''}
           </nav>
           <div class="header-tools">
-            <button class="icon-button" type="button" title="แจ้งเตือน" aria-label="แจ้งเตือน">🔔</button>
+            <div class="notification-wrap">
+              <button class="icon-button notification-button ${State.notificationsOpen ? 'active' : ''}" type="button" data-action="notification-toggle" title="แจ้งเตือน" aria-label="แจ้งเตือน">
+                <span aria-hidden="true">🔔</span>
+                ${notificationCount ? `<span class="notification-badge">${notificationCount > 99 ? '99+' : notificationCount}</span>` : ''}
+              </button>
+              ${State.notificationsOpen ? renderNotificationPanel(notifications) : ''}
+            </div>
             <div class="profile-chip" title="${escapeAttr(State.profile?.email || '')}">
               <span class="profile-avatar">${escapeHTML(initials(profileName))}</span>
               <span class="profile-text">
@@ -772,7 +810,7 @@
     `;
   }
 
-    function navLink(hash, label, route) {
+  function navLink(hash, label, route) {
     const active = route === hash || (hash === '#demos' && route.startsWith('#demos/') && route !== '#demos/new');
     const icons = {
       '#dashboard': '▦',
@@ -783,7 +821,151 @@
     return `<a href="${hash}" class="top-nav-link ${active ? 'active' : ''}" title="${escapeAttr(label)}"><span>${escapeHTML(icons[hash] || '')}</span>${escapeHTML(label)}</a>`;
   }
 
-    function renderLoadNotice() {
+  
+  function getCustomBrandLogo() {
+    const value = State.settings?.brand_logo_data_uri;
+    return isValidLogoDataUri(value) ? value : '';
+  }
+
+  function getBrandLogoDataUri() {
+    return getCustomBrandLogo() || BRAND_LOGO_DATA_URI;
+  }
+
+  function isValidLogoDataUri(value) {
+    return typeof value === 'string' && /^data:image\/(png|jpe?g|webp);base64,/i.test(value);
+  }
+
+  function buildNotifications() {
+    if (!State.dataLoaded) return [];
+
+    const rows = getDemoRows();
+    const allRows = getAllDemoRows();
+    const rowByRound = new Map(allRows.map((row) => [row.round.id, row]));
+    const notifications = [];
+
+    for (const row of rows) {
+      if (!FINAL_STATUSES.has(row.effectiveStatus) && row.remainingDays >= 0 && row.remainingDays <= 7) {
+        notifications.push({
+          id: `near-${row.round.id}`,
+          kind: 'near',
+          icon: '⏳',
+          title: `${row.company.company_name} ใกล้หมดอายุ`,
+          detail: `เหลือ ${formatRemaining(row.remainingDays)} · สิ้นสุด ${formatDate(row.round.end_date)}`,
+          date: row.round.end_date,
+          href: `#demos/${row.round.id}`,
+          severity: 2
+        });
+      }
+
+      if (row.effectiveStatus === STATUS.EXPIRED) {
+        notifications.push({
+          id: `expired-${row.round.id}`,
+          kind: 'expired',
+          icon: '⚠',
+          title: `${row.company.company_name} หมดอายุแล้ว`,
+          detail: `${formatRemaining(row.remainingDays)} · ยังไม่ปิดรายการ`,
+          date: row.round.end_date,
+          href: `#demos/${row.round.id}`,
+          severity: 1
+        });
+      }
+    }
+
+    for (const email of State.emailLogs || []) {
+      if (!['error', 'queued'].includes(email.sent_status)) continue;
+      const row = rowByRound.get(email.demo_round_id);
+      const isError = email.sent_status === 'error';
+      notifications.push({
+        id: `email-${email.id}`,
+        kind: 'email',
+        icon: isError ? '✕' : '✉',
+        title: isError ? 'อีเมลส่งไม่สำเร็จ' : 'อีเมลรอส่ง',
+        detail: `${row?.company?.company_name || 'ไม่พบรายการเดโม'} · ${email.subject || '-'}`,
+        date: email.sent_at || email.created_at || '',
+        href: row ? `#demos/${row.round.id}` : '#demos',
+        severity: isError ? 0 : 3
+      });
+    }
+
+    return notifications
+      .sort((a, b) => {
+        if (a.severity !== b.severity) return a.severity - b.severity;
+        return new Date(a.date || 0) - new Date(b.date || 0);
+      })
+      .slice(0, 99);
+  }
+
+  function renderNotificationPanel(notifications) {
+    const nearCount = notifications.filter((item) => item.kind === 'near').length;
+    const expiredCount = notifications.filter((item) => item.kind === 'expired').length;
+    const emailCount = notifications.filter((item) => item.kind === 'email').length;
+    const activeKind = State.notificationFilter || 'all';
+    const visibleItems = activeKind === 'all'
+      ? notifications
+      : notifications.filter((item) => item.kind === activeKind);
+    const items = visibleItems.slice(0, 12);
+
+    return `
+      <section class="notification-panel" aria-label="รายการแจ้งเตือน">
+        <header class="notification-head">
+          <div>
+            <strong>แจ้งเตือน (${notifications.length})</strong>
+            <p>รายการที่ควรตรวจสอบตอนนี้</p>
+          </div>
+          <button class="btn small ghost" type="button" data-action="notification-close">ปิด</button>
+        </header>
+        <div class="notification-tabs">
+          ${notificationTab('all', `ทั้งหมด ${notifications.length}`, activeKind)}
+          ${notificationTab('near', `ใกล้หมดอายุ ${nearCount}`, activeKind)}
+          ${notificationTab('expired', `หมดอายุ ${expiredCount}`, activeKind)}
+          ${notificationTab('email', `อีเมล ${emailCount}`, activeKind)}
+        </div>
+        <div class="notification-list">
+          ${items.length ? items.map((item) => `
+            <a class="notification-item ${escapeAttr(item.kind)}" href="${escapeAttr(item.href)}">
+              <span class="notification-icon">${escapeHTML(item.icon)}</span>
+              <span class="notification-content">
+                <strong>${escapeHTML(item.title)}</strong>
+                <small>${escapeHTML(item.detail)}</small>
+              </span>
+              <span class="notification-date">${escapeHTML(item.date ? formatDate(item.date) : '-')}</span>
+            </a>
+          `).join('') : '<div class="empty compact-empty">ไม่มีแจ้งเตือนในหมวดนี้</div>'}
+        </div>
+        <footer class="notification-footer">
+          <button class="btn small secondary" type="button" data-action="notification-filter" data-kind="${escapeAttr(activeKind)}">ดูในรายการเดโม</button>
+        </footer>
+      </section>
+    `;
+  }
+
+  function notificationTab(kind, label, activeKind) {
+    return `<button class="notification-tab ${activeKind === kind ? 'active' : ''}" type="button" data-action="notification-tab" data-kind="${escapeAttr(kind)}">${escapeHTML(label)}</button>`;
+  }
+
+  function applyNotificationFilter(kind) {
+    State.notificationsOpen = false;
+    State.filters = {
+      search: '',
+      status: '',
+      responsible: '',
+      module: '',
+      sort: 'updated_desc',
+      nearOnly: false
+    };
+
+    if (kind === 'near') {
+      State.filters.nearOnly = true;
+    } else if (kind === 'expired') {
+      State.filters.status = STATUS.EXPIRED;
+    }
+
+    State.demoPage = 1;
+    location.hash = '#demos';
+    render();
+  }
+
+  function renderLoadNotice() {
     if (State.loading) {
       return `<div class="config-warning">${escapeHTML(State.loadingMessage || 'กำลังโหลดข้อมูล...')}</div>`;
     }
@@ -1405,12 +1587,14 @@
           ${adminTab('modules', 'โมดูล')}
           ${adminTab('templates', 'เทมเพลตอีเมล')}
           ${adminTab('settings', 'ตั้งค่าอีเมล')}
+          ${adminTab('brand', 'แบรนด์ / โลโก้')}
         </div>
         ${State.adminTab === 'users' ? renderAdminUsers() : ''}
         ${State.adminTab === 'responsible' ? renderAdminResponsiblePeople() : ''}
         ${State.adminTab === 'modules' ? renderAdminModules() : ''}
         ${State.adminTab === 'templates' ? renderAdminTemplates() : ''}
         ${State.adminTab === 'settings' ? renderAdminSettings() : ''}
+        ${State.adminTab === 'brand' ? renderAdminBrandSettings() : ''}
       </section>
     `;
   }
@@ -1629,6 +1813,39 @@
           <input class="input" name="apps_script_url" value="${escapeAttr(appsScriptUrl)}" placeholder="https://script.google.com/macros/s/.../exec">
         </div>
         <button class="btn primary" type="submit">บันทึกการตั้งค่า</button>
+      </form>
+    `;
+  }
+
+
+  function renderAdminBrandSettings() {
+    const customLogo = getCustomBrandLogo();
+    const previewLogo = getBrandLogoDataUri();
+
+    return `
+      <form data-action="admin-brand-save" class="grid brand-settings">
+        <div class="brand-preview-card">
+          <div class="brand-preview-logo">
+            <img data-logo-preview src="${previewLogo}" alt="DEMO CRM Logo">
+          </div>
+          <div class="brand-preview-info">
+            <h2>โลโก้ระบบ</h2>
+            <p>อัปโหลดโลโก้สำหรับแสดงในแถบบนของเว็บ รองรับ PNG, JPG, WebP ขนาดไม่เกิน 300KB</p>
+            <span class="badge ${customLogo ? 'active' : 'pending'}">${customLogo ? 'ใช้โลโก้ที่อัปโหลด' : 'ใช้โลโก้เริ่มต้น'}</span>
+          </div>
+        </div>
+
+        <div class="field">
+          <label>เลือกไฟล์โลโก้</label>
+          <input class="input" type="file" accept="image/png,image/jpeg,image/webp" data-logo-input>
+          <input type="hidden" name="brand_logo_data_uri" value="${escapeAttr(customLogo || '')}">
+          <p class="muted small-text" data-logo-file-name>ไฟล์ที่เลือกจะแสดง preview ก่อนบันทึก</p>
+        </div>
+
+        <div class="actions">
+          <button class="btn primary" type="submit">บันทึกโลโก้</button>
+          <button class="btn ghost" type="button" data-action="brand-logo-reset">คืนค่าโลโก้เริ่มต้น</button>
+        </div>
       </form>
     `;
   }
@@ -2225,6 +2442,83 @@
     await loadAllData();
     render();
     toast('คืนค่าเทมเพลตแล้ว', 'success');
+  }
+
+
+  async function saveBrandSettings(form) {
+    const logoValue = form.brand_logo_data_uri?.value.trim() || '';
+    if (logoValue && !isValidLogoDataUri(logoValue)) {
+      throw new Error('ไฟล์โลโก้ไม่ถูกต้อง รองรับเฉพาะ PNG, JPG หรือ WebP');
+    }
+
+    if (logoValue && logoValue.length > 420000) {
+      throw new Error('ไฟล์โลโก้ใหญ่เกินไป กรุณาเลือกไฟล์ไม่เกิน 300KB');
+    }
+
+    const { error } = await State.sb.from('settings').upsert({
+      key: 'brand_logo_data_uri',
+      value: logoValue,
+      updated_by: State.profile.id
+    }, { onConflict: 'key' });
+
+    if (error) throw error;
+
+    await loadAllData();
+    render();
+    toast('บันทึกโลโก้แล้ว', 'success');
+  }
+
+  async function resetBrandLogo() {
+    if (!window.confirm('คืนค่าโลโก้เริ่มต้นหรือไม่?')) return;
+
+    const { error } = await State.sb.from('settings').upsert({
+      key: 'brand_logo_data_uri',
+      value: '',
+      updated_by: State.profile.id
+    }, { onConflict: 'key' });
+
+    if (error) throw error;
+
+    await loadAllData();
+    render();
+    toast('คืนค่าโลโก้เริ่มต้นแล้ว', 'success');
+  }
+
+  async function previewLogoUpload(input) {
+    const file = input.files?.[0];
+    if (!file) return;
+
+    const allowed = ['image/png', 'image/jpeg', 'image/webp'];
+    if (!allowed.includes(file.type)) {
+      input.value = '';
+      toast('รองรับเฉพาะ PNG, JPG หรือ WebP', 'warning');
+      return;
+    }
+
+    if (file.size > 300 * 1024) {
+      input.value = '';
+      toast('ไฟล์โลโก้ต้องไม่เกิน 300KB', 'warning');
+      return;
+    }
+
+    const dataUri = await readFileAsDataURL(file);
+    const form = input.closest('form');
+    const hidden = form?.querySelector('[name="brand_logo_data_uri"]');
+    const preview = form?.querySelector('[data-logo-preview]');
+    const fileName = form?.querySelector('[data-logo-file-name]');
+
+    if (hidden) hidden.value = dataUri;
+    if (preview) preview.src = dataUri;
+    if (fileName) fileName.textContent = `${file.name} · ${(file.size / 1024).toFixed(1)} KB`;
+  }
+
+  function readFileAsDataURL(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result || ''));
+      reader.onerror = () => reject(new Error('อ่านไฟล์ไม่สำเร็จ'));
+      reader.readAsDataURL(file);
+    });
   }
 
   async function saveSettings(form) {

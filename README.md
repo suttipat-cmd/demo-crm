@@ -4,8 +4,8 @@ DEMO CRM สำหรับทีม CS ใช้จัดการบริษ�
 
 ## Version
 
-- Current: `v1.2.0`
-- Type: UI Redesign
+- Current: `v1.2.1`
+- Type: UI / Settings Update
 - SQL required: ไม่ต้องรัน SQL เพิ่ม
 
 ## Files
@@ -17,33 +17,25 @@ script.js
 README.md
 ```
 
-## สิ่งที่เปลี่ยนใน v1.2.0
+## สิ่งที่เปลี่ยนใน v1.2.1
 
-- เปลี่ยน layout หลักเป็น Top Navigation ตาม design system ใหม่
-- ใช้ชื่อระบบ `DEMO CRM`
-- ฝังโลโก้ในไฟล์โค้ดเพื่อไม่ต้องเพิ่มไฟล์รูปแยก
-- ปรับสีหลักเป็น blue / cyan ตาม brand
-- ปรับ card, table, form, dropdown, badge, pagination, modal และ toast ให้เป็นชุดเดียวกัน
-- ปรับ spacing, radius, shadow และ hover state ให้ใช้งานง่ายขึ้น
-- ปรับ responsive สำหรับจอเล็ก โดยเมนูด้านบนเลื่อนได้
-- รักษา logic จาก v1.1.2 ทั้งหมด
+- เพิ่มตัวเลขแจ้งเตือนบนไอคอนกระดิ่ง
+- คลิกกระดิ่งแล้วแสดง popup แจ้งเตือนจากข้อมูลปัจจุบัน
+- แจ้งเตือนเดโมใกล้หมดอายุภายใน 7 วัน
+- แจ้งเตือนเดโมหมดอายุแล้วยังไม่ปิดรายการ
+- แจ้งเตือนอีเมลส่งไม่สำเร็จและอีเมลรอส่ง
+- กดรายการแจ้งเตือนแล้วเข้าไปยังหน้ารายละเอียดเดโม
+- เพิ่มแท็บ `แบรนด์ / โลโก้` ในหน้าตั้งค่าระบบ
+- อัปโหลดโลโก้เว็บเองได้ รองรับ PNG/JPG/WebP ไม่เกิน 300KB
+- บันทึกโลโก้ใน `settings.brand_logo_data_uri` เป็น base64
+- มีปุ่มคืนค่าโลโก้เริ่มต้น
+- ไม่ใช้ service_role key ใน frontend
 
-## วิธีติดตั้ง
-
-แทนที่ไฟล์บน repo:
-
-```txt
-index.html
-style.css
-script.js
-README.md
-```
-
-จากนั้น push:
+## Deploy
 
 ```bash
 git add .
-git commit -m "Release v1.2.0 redesign top navigation"
+git commit -m "Release v1.2.1 brand logo and notifications"
 git push
 ```
 
@@ -54,14 +46,20 @@ Mac: Cmd + Shift + R
 Windows: Ctrl + F5
 ```
 
-## ตรวจหลัง deploy
+## Test checklist
 
-- หน้า login ต้องแสดงโลโก้และชื่อ DEMO CRM
-- หลัง login ต้องเห็นเมนูด้านบน: แดชบอร์ด, รายการเดโม, สร้างเดโม, ตั้งค่าระบบ
-- Dashboard, รายการเดโม, ฟอร์ม, Detail และ Admin ต้องยังใช้งานได้เหมือน v1.1.2
-- ตรวจสร้างเดโม, ต่ออายุ, บันทึก log, ลบโมดูลที่ไม่ถูกใช้งาน, pagination และดึงรายงาน
-- ตรวจ Console ว่าไม่มี JavaScript error
+- Login ด้วย admin
+- เปิดกระดิ่งแล้วเห็น popup แจ้งเตือน
+- มี badge ตัวเลขเมื่อมีรายการใกล้หมดอายุ/หมดอายุ/email error/queued
+- กด notification แล้วไปหน้า detail ได้
+- เข้า `ตั้งค่าระบบ > แบรนด์ / โลโก้`
+- อัปโหลดโลโก้ PNG/JPG/WebP แล้ว preview ได้
+- บันทึกแล้วโลโก้บน header เปลี่ยน
+- กดคืนค่าโลโก้เริ่มต้นแล้วกลับเป็นโลโก้ default
+- ตรวจ Console ว่าไม่มี error ใหม่
 
-## Rollback
+## Security notes
 
-ถ้า UI มีปัญหา ให้ revert commit นี้กลับ v1.1.2 ได้ทันที เพราะ v1.2.0 ไม่ได้เพิ่ม SQL migration
+- ห้ามใส่ service_role key, database password หรือ secret ใด ๆ ใน frontend
+- โลโก้ถูกเก็บเป็น base64 ใน `settings` เหมาะกับไฟล์ขนาดเล็กเท่านั้น
+- ถ้าต้องใช้โลโก้ขนาดใหญ่ในอนาคต ควรย้ายไป Supabase Storage พร้อม policy ที่เหมาะสม
