@@ -1,11 +1,11 @@
-/* DEMO CRM v1.3.3
+/* DEMO CRM v1.3.4
    Static SPA for GitHub Pages + Supabase.
    Security rule: never place service_role key, database password, or private token in this file.
 */
 (() => {
   'use strict';
 
-  const APP_VERSION = '1.3.3';
+  const APP_VERSION = '1.3.4';
   const APP_CONFIG = {
     SUPABASE_URL: 'https://hacmassihdqlgkmwoivs.supabase.co',
     SUPABASE_ANON_KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhhY21hc3NpaGRxbGdrbXdvaXZzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkxMjk1ODgsImV4cCI6MjA5NDcwNTU4OH0.TgkJCHaRndMDZY2SANXCjFLdMkHUd_bxJOb0K9Znpa8',
@@ -412,6 +412,11 @@
         break;
       case 'copy':
         await copyText(target.dataset.copy || '');
+        break;
+      case 'demo-close':
+        await withButtonLoading(target, async () => {
+          await closeDemoRound(target.dataset.id);
+        });
         break;
       case 'demo-delete':
         await withButtonLoading(target, async () => {
@@ -1588,11 +1593,20 @@
           <tbody>
             ${rows.map((row) => {
               const canDelete = canSoftDelete(row);
+              const canClose = canCloseDemoRound(row);
               return `
                 <tr>
                   <td><a href="#demos/${row.round.id}"><strong>${escapeHTML(row.company.company_name)}</strong></a></td>
                   <td>${escapeHTML(row.company.contact_name || '-')}</td>
-                  <td>${escapeHTML((row.company.contact_emails || []).join(', '))}</td>
+                  <td>
+                    <div class="contact-copy-cell">
+                      <span class="cell-main">${escapeHTML((row.company.contact_emails || []).join(', ') || '-')}</span>
+                      <div class="cell-actions">
+                        <button class="btn tiny ghost" data-action="copy" data-copy="${escapeAttr(contactEmailsCopyText(row))}">คัดลอกอีเมล</button>
+                        <button class="btn tiny ghost" data-action="copy" data-copy="${escapeAttr(demoPasswordsCopyText(row))}" ${row.accounts.length ? '' : 'disabled'}>คัดลอกรหัสผ่าน</button>
+                      </div>
+                    </div>
+                  </td>
                   <td>${statusBadge(row.effectiveStatus)}</td>
                   <td>${escapeHTML(displayName(row.responsible))}</td>
                   <td>${formatDate(row.round.start_date)}</td>
@@ -1608,6 +1622,7 @@
                       <a class="btn small ghost" href="#demos/${row.round.id}">ดู</a>
                       <a class="btn small secondary" href="#demos/edit/${row.round.id}">แก้ไข</a>
                       <a class="btn small success" href="#demos/new/renew/${row.round.id}">ต่ออายุ</a>
+                      ${canClose ? `<button class="btn small warning" data-action="demo-close" data-id="${row.round.id}">ปิด</button>` : ''}
                       ${canShowFirstEmailAction(row) ? `<button class="btn small ghost" data-action="email-preview" data-id="${row.round.id}">อีเมล</button>` : ''}
                       ${canDelete ? `<button class="btn small danger" data-action="demo-delete" data-id="${row.round.id}">ลบ</button>` : ''}
                     </div>
@@ -2519,6 +2534,40 @@
     const rows = accounts.map((account) => ({ ...account, demo_round_id: roundId }));
     const { error } = await State.sb.from('demo_accounts').insert(rows);
     if (error) throw error;
+  }
+
+  async function closeDemoRound(roundId) {
+    const row = getDemoRow(roundId);
+    if (!row) {
+      toast('ไม่พบรายการเดโม', 'error');
+      return;
+    }
+
+    if (!canCloseDemoRound(row)) {
+      toast('ปิดได้เฉพาะรายการที่ถึงวันสิ้นสุดแล้วและยังไม่ปิดรายการ', 'warning');
+      return;
+    }
+
+    if (!window.confirm(`ปิดรายการเดโมของ ${row.company.company_name} หรือไม่?`)) return;
+
+    const { error } = await State.sb.from('demo_rounds').update({
+      status: STATUS.CLOSED,
+      updated_at: new Date().toISOString()
+    }).eq('id', roundId);
+    if (error) throw error;
+
+    await insertActivityLog({
+      company_id: row.company.id,
+      demo_round_id: row.round.id,
+      log_type: 'เปลี่ยนสถานะ',
+      source: 'system',
+      message: 'ปิดรายการเดโม'
+    }).catch(() => undefined);
+
+    await cleanupClosedRoundLogs(roundId);
+    await loadAllData();
+    render();
+    toast('ปิดรายการแล้ว', 'success');
   }
 
   async function closeRenewedRound(roundId) {
@@ -3851,6 +3900,29 @@ async function saveModule(form) {
 
   function userIsAdmin() {
     return State.profile?.role === 'admin';
+  }
+
+  function contactEmailsCopyText(row) {
+    const emails = row?.company?.contact_emails || [];
+    if (!emails.length) return '';
+    return emails.join(', ');
+  }
+
+  function demoPasswordsCopyText(row) {
+    const accounts = row?.accounts || [];
+    if (!accounts.length) return '';
+    return accounts.map((account, index) => {
+      const email = account.login_email || '-';
+      const password = account.password || '-';
+      return accounts.length > 1
+        ? `${index + 1}. ${email} / ${password}`
+        : `${email} / ${password}`;
+    }).join('\n');
+  }
+
+  function canCloseDemoRound(row) {
+    if (!row?.round?.end_date) return false;
+    return row.round.end_date <= todayISO() && row.round.status !== STATUS.CLOSED;
   }
 
   function canSoftDelete(row) {

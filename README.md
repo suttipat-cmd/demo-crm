@@ -4,8 +4,8 @@ DEMO CRM สำหรับทีม CS ใช้จัดการบริษ�
 
 ## Version
 
-- Current: `v1.3.3`
-- Type: Report Manual Log Sort Hotfix
+- Current: `v1.3.4`
+- Type: Demo List Actions Hotfix
 - SQL required:
   - `supabase/009_v1_2_9_activity_log_source.sql` ถ้ายังไม่เคยรันจาก v1.2.9
   - `supabase/010_v1_3_0_profile_avatar.sql` ถ้ายังไม่เคยรันจาก v1.3.0
@@ -26,6 +26,15 @@ supabase/
   011_v1_3_2_notification_states.sql
   reset_transaction_data_keep_masters.sql
 ```
+
+## v1.3.4 Update
+
+- หน้า `รายการเดโม` เพิ่มปุ่ม `คัดลอกอีเมล` ในคอลัมน์อีเมลผู้ติดต่อ
+- หน้า `รายการเดโม` เพิ่มปุ่ม `คัดลอกรหัสผ่าน` เพื่อคัดลอกบัญชีเดโมของรายการนั้น
+- เพิ่มปุ่ม `ปิด` ในคอลัมน์จัดการ เฉพาะรายการที่ถึง/เลยวันสิ้นสุดแล้ว และสถานะยังไม่ใช่ `ปิดรายการ`
+- ปุ่ม `ปิด` อัปเดตสถานะเป็น `ปิดรายการ` และกันกดซ้ำด้วย loading state
+- ไม่ต้องรัน SQL เพิ่มจาก v1.3.3
+
 
 ## v1.3.3 Update
 
@@ -76,7 +85,7 @@ supabase/011_v1_3_2_notification_states.sql
 
 ```bash
 git add .
-git commit -m "Release v1.3.2 notification read dismiss"
+git commit -m "Release v1.3.4 demo list copy and close actions"
 git push
 ```
 

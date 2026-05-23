@@ -3671,3 +3671,33 @@ tbody tr:hover {
   justify-content: space-between;
   gap: 8px;
 }
+
+
+.contact-copy-cell {
+  display: grid;
+  gap: 8px;
+  min-width: 220px;
+}
+
+.contact-copy-cell .cell-main {
+  display: block;
+  max-width: 320px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cell-actions {
+  display: inline-flex;
+  gap: 6px;
+  flex-wrap: nowrap;
+  align-items: center;
+}
+
+.btn.tiny {
+  min-height: 26px;
+  padding: 4px 8px;
+  border-radius: 8px;
+  font-size: 11px;
+  white-space: nowrap;
+}
