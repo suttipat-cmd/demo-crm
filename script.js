@@ -1,11 +1,11 @@
-/* DEMO CRM v1.3.4
+/* DEMO CRM v1.3.5
    Static SPA for GitHub Pages + Supabase.
    Security rule: never place service_role key, database password, or private token in this file.
 */
 (() => {
   'use strict';
 
-  const APP_VERSION = '1.3.4';
+  const APP_VERSION = '1.3.5';
   const APP_CONFIG = {
     SUPABASE_URL: 'https://hacmassihdqlgkmwoivs.supabase.co',
     SUPABASE_ANON_KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhhY21hc3NpaGRxbGdrbXdvaXZzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkxMjk1ODgsImV4cCI6MjA5NDcwNTU4OH0.TgkJCHaRndMDZY2SANXCjFLdMkHUd_bxJOb0K9Znpa8',
@@ -81,7 +81,9 @@
     demoPage: 1,
     reportPage: 1,
     reportSearch: '',
-    adminTab: 'users'
+    adminTab: 'users',
+    searchRenderTimer: null,
+    reportRenderTimer: null
   };
 
   const $ = (selector, root = document) => root.querySelector(selector);
@@ -553,18 +555,45 @@
     if (target.matches('[data-filter="search"]')) {
       State.filters.search = target.value;
       State.demoPage = 1;
-      render();
+      scheduleFocusedSearchRender('demo');
       return;
     }
 
     if (target.matches('[data-report-search]')) {
       State.reportSearch = target.value;
       State.reportPage = 1;
-      render();
+      scheduleFocusedSearchRender('report');
       return;
     }
 
     saveDemoDraftFromElement(target);
+  }
+
+  function scheduleFocusedSearchRender(type) {
+    const isReport = type === 'report';
+    const selector = isReport ? '[data-report-search]' : '[data-filter="search"]';
+    const timerKey = isReport ? 'reportRenderTimer' : 'searchRenderTimer';
+    const active = document.activeElement;
+    const selectionStart = active && typeof active.selectionStart === 'number' ? active.selectionStart : null;
+    const selectionEnd = active && typeof active.selectionEnd === 'number' ? active.selectionEnd : selectionStart;
+
+    window.clearTimeout(State[timerKey]);
+    State[timerKey] = window.setTimeout(() => {
+      render();
+      const input = $(selector);
+      if (!input) return;
+      input.focus({ preventScroll: true });
+      if (selectionStart !== null) {
+        const max = String(input.value || '').length;
+        const start = Math.min(selectionStart, max);
+        const end = Math.min(selectionEnd ?? start, max);
+        try {
+          input.setSelectionRange(start, end);
+        } catch {
+          // ignore unsupported input types
+        }
+      }
+    }, 180);
   }
 
   function handleKeyDown(event) {
@@ -3911,13 +3940,10 @@ async function saveModule(form) {
   function demoPasswordsCopyText(row) {
     const accounts = row?.accounts || [];
     if (!accounts.length) return '';
-    return accounts.map((account, index) => {
-      const email = account.login_email || '-';
-      const password = account.password || '-';
-      return accounts.length > 1
-        ? `${index + 1}. ${email} / ${password}`
-        : `${email} / ${password}`;
-    }).join('\n');
+    return accounts
+      .map((account) => account.password)
+      .filter(Boolean)
+      .join('\n');
   }
 
   function canCloseDemoRound(row) {
@@ -3975,12 +4001,9 @@ async function saveModule(form) {
   }
 
   function defaultMonthRange() {
-    const now = new Date();
-    const start = new Date(now.getFullYear(), now.getMonth(), 1);
-    const end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
     return {
-      start: toLocalISODate(start),
-      end: toLocalISODate(end)
+      start: '',
+      end: ''
     };
   }
 

@@ -4,12 +4,19 @@ DEMO CRM สำหรับทีม CS ใช้จัดการบริษ�
 
 ## Version
 
-- Current: `v1.3.4`
-- Type: Demo List Actions Hotfix
+- Current: `v1.3.5`
+- Type: Search + Copy + Dashboard Date Hotfix
 - SQL required:
   - `supabase/009_v1_2_9_activity_log_source.sql` ถ้ายังไม่เคยรันจาก v1.2.9
   - `supabase/010_v1_3_0_profile_avatar.sql` ถ้ายังไม่เคยรันจาก v1.3.0
   - `supabase/011_v1_3_2_notification_states.sql`
+
+## v1.3.5 Notes
+
+- แก้ช่องค้นหาในหน้า `รายการเดโม` และ `รายงาน` ให้พิมพ์ต่อเนื่องได้ ไม่เสีย focus หลังพิมพ์ทีละตัว
+- ปุ่ม `คัดลอกรหัสผ่าน` ในหน้า `รายการเดโม` จะคัดลอกเฉพาะรหัสผ่านเท่านั้น
+- หน้า `แดชบอร์ด` ค่าเริ่มต้นของวันที่ `เริ่ม` และ `สิ้นสุด` เป็นค่าว่าง เพื่อแสดงข้อมูลทั้งหมดก่อนเลือกช่วงวันที่
+- ไม่ต้องรัน SQL เพิ่มจาก v1.3.4
 
 ## Files
 
