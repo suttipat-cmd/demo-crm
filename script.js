@@ -1,11 +1,11 @@
-/* DEMO CRM v1.3.5
+/* DEMO CRM v1.3.7
    Static SPA for GitHub Pages + Supabase.
    Security rule: never place service_role key, database password, or private token in this file.
 */
 (() => {
   'use strict';
 
-  const APP_VERSION = '1.3.5';
+  const APP_VERSION = '1.3.7';
   const APP_CONFIG = {
     SUPABASE_URL: 'https://hacmassihdqlgkmwoivs.supabase.co',
     SUPABASE_ANON_KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhhY21hc3NpaGRxbGdrbXdvaXZzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkxMjk1ODgsImV4cCI6MjA5NDcwNTU4OH0.TgkJCHaRndMDZY2SANXCjFLdMkHUd_bxJOb0K9Znpa8',
@@ -298,39 +298,44 @@
     const action = form.dataset.action;
     const submitter = event.submitter || form.querySelector('[type="submit"]');
 
-    await withButtonLoading(submitter, async () => {
-      switch (action) {
-        case 'login':
-          await login(form);
-          break;
-        case 'demo-save':
-          await saveDemoForm(form);
-          break;
-        case 'activity-add':
-          await addActivityLog(form);
-          break;
-        case 'admin-responsible-save':
-          await saveResponsiblePerson(form);
-          break;
-        case 'admin-module-save':
-          await saveModule(form);
-          break;
-        case 'admin-template-save':
-          await saveEmailTemplate(form);
-          break;
-        case 'admin-setting-save':
-          await saveSettings(form);
-          break;
-        case 'admin-brand-save':
-          await saveBrandSettings(form);
-          break;
-        case 'admin-profile-save':
-          await saveProfileAdmin(form);
-          break;
-        default:
-          toast('ไม่รู้จักการทำงานนี้', 'error');
-      }
-    });
+    try {
+      await withButtonLoading(submitter, async () => {
+        switch (action) {
+          case 'login':
+            await login(form);
+            break;
+          case 'demo-save':
+            await saveDemoForm(form);
+            break;
+          case 'activity-add':
+            await addActivityLog(form);
+            break;
+          case 'admin-responsible-save':
+            await saveResponsiblePerson(form);
+            break;
+          case 'admin-module-save':
+            await saveModule(form);
+            break;
+          case 'admin-template-save':
+            await saveEmailTemplate(form);
+            break;
+          case 'admin-setting-save':
+            await saveSettings(form);
+            break;
+          case 'admin-brand-save':
+            await saveBrandSettings(form);
+            break;
+          case 'admin-profile-save':
+            await saveProfileAdmin(form);
+            break;
+          default:
+            toast('ไม่รู้จักการทำงานนี้', 'error');
+        }
+      });
+    } catch (error) {
+      toast(safeError(error), 'error');
+      console.error(error);
+    }
   }
 
   async function handleClick(event) {
@@ -1871,7 +1876,7 @@
           </div>
           <div class="field">
             <label>อีเมลผู้ติดต่อ <span class="required">*</span></label>
-            ${renderChipInput('contact_emails', values.contact_emails || [], 'พิมพ์อีเมลแล้วกด Enter')}
+            ${renderChipInput('contact_emails', values.contact_emails || [], 'พิมพ์อีเมล แล้วกด Enter หรือกดบันทึกได้เลย')}
           </div>
         </section>
 
@@ -2364,7 +2369,7 @@
       <form data-action="admin-setting-save" class="grid">
         <div class="field">
           <label>อีเมล CC ประจำ</label>
-          ${renderChipInput('fixed_cc_emails', Array.isArray(fixedCc) ? fixedCc : [], 'พิมพ์อีเมลแล้วกด Enter')}
+          ${renderChipInput('fixed_cc_emails', Array.isArray(fixedCc) ? fixedCc : [], 'พิมพ์อีเมล แล้วกด Enter หรือกดบันทึกได้เลย')}
         </div>
         <div class="field">
           <label>Google Apps Script Web App URL</label>
@@ -2425,14 +2430,9 @@
   async function saveDemoForm(form) {
     const editId = form.dataset.editId || '';
     const renewFromId = form.dataset.renewFromId || '';
-    const contactEmails = getChipValues(form, 'contact_emails');
+    const contactEmails = getChipValues(form, 'contact_emails', { commitPending: true });
     const selectedModules = $$('input[name="modules"]:checked', form).map((input) => input.value);
-    const accountRows = $$('[data-account-row]', form);
-    const accounts = accountRows.map((row) => ({
-      login_email: $('[name="account_login_email"]', row)?.value.trim(),
-      password: $('[name="account_password"]', row)?.value,
-      note: $('[name="account_note"]', row)?.value.trim() || null
-    })).filter((account) => account.login_email || account.password || account.note);
+    const accounts = collectDemoAccounts(form);
 
     validateDemoForm(form, contactEmails, selectedModules, accounts);
 
@@ -2527,6 +2527,36 @@
     await loadAllData();
     toast('บันทึกเดโมสำเร็จ', 'success');
     location.hash = `#demos/${roundId}`;
+  }
+
+  function collectDemoAccounts(form, { includeEmpty = false } = {}) {
+    const rows = $$('[data-account-row]', form);
+    let accounts = rows.map((row) => ({
+      login_email: $('[name="account_login_email"]', row)?.value.trim() || '',
+      password: $('[name="account_password"]', row)?.value || '',
+      note: $('[name="account_note"]', row)?.value.trim() || ''
+    }));
+
+    if (!accounts.length) {
+      const emails = $$('[name="account_login_email"]', form);
+      const passwords = $$('[name="account_password"]', form);
+      const notes = $$('[name="account_note"]', form);
+      const length = Math.max(emails.length, passwords.length, notes.length);
+
+      accounts = Array.from({ length }, (_item, index) => ({
+        login_email: emails[index]?.value.trim() || '',
+        password: passwords[index]?.value || '',
+        note: notes[index]?.value.trim() || ''
+      }));
+    }
+
+    return accounts
+      .map((account) => ({
+        login_email: account.login_email,
+        password: account.password,
+        note: account.note || null
+      }))
+      .filter((account) => includeEmpty || account.login_email || account.password || account.note);
   }
 
   function validateDemoForm(form, emails, modules, accounts) {
@@ -3731,11 +3761,7 @@ async function saveModule(form) {
       end_date: form.end_date?.value || addDaysISO(todayISO(), 14),
       renewal_no: Number(form.renewal_no?.value || 0),
       modules: $$('input[name="modules"]:checked', form).map((input) => input.value),
-      accounts: $$('[data-account-row]', form).map((row) => ({
-        login_email: $('[name="account_login_email"]', row)?.value.trim() || '',
-        password: $('[name="account_password"]', row)?.value || '',
-        note: $('[name="account_note"]', row)?.value.trim() || ''
-      })),
+      accounts: collectDemoAccounts(form, { includeEmpty: true }),
       activity_message: form.activity_message?.value || ''
     };
   }
@@ -3761,22 +3787,40 @@ async function saveModule(form) {
   }
 
   function addChipFromInput(input) {
-    const value = input.value.trim().replace(/,$/, '');
-    if (!value) return;
-
-    if (!isEmail(value)) {
-      toast(`อีเมลไม่ถูกต้อง: ${value}`, 'warning');
-      return;
+    try {
+      commitPendingChipInput(input.closest('[data-chip-name]'), { source: 'enter' });
+    } catch (error) {
+      toast(safeError(error), 'warning');
     }
+  }
 
-    const wrapper = input.closest('[data-chip-name]');
+  function commitPendingChipInput(wrapper, { source = 'save' } = {}) {
+    if (!wrapper) return [];
+    const input = $('[data-chip-input]', wrapper);
     const hidden = $('input[type="hidden"]', wrapper);
     const current = getChipValuesFromWrapper(wrapper);
-    if (!current.includes(value)) current.push(value);
+    const rawValue = input?.value.trim().replace(/,$/, '') || '';
 
-    input.insertAdjacentHTML('beforebegin', renderChip(value));
-    hidden.value = JSON.stringify(current);
+    if (!rawValue) {
+      if (hidden) hidden.value = JSON.stringify(current);
+      return current;
+    }
+
+    if (!isEmail(rawValue)) {
+      const message = source === 'save'
+        ? `อีเมลผู้ติดต่อไม่ถูกต้อง: ${rawValue}`
+        : `อีเมลไม่ถูกต้อง: ${rawValue}`;
+      throw new Error(message);
+    }
+
+    if (!current.includes(rawValue)) {
+      input.insertAdjacentHTML('beforebegin', renderChip(rawValue));
+      current.push(rawValue);
+    }
+
+    if (hidden) hidden.value = JSON.stringify(current);
     input.value = '';
+    return current;
   }
 
   function removeChip(button) {
@@ -3788,9 +3832,10 @@ async function saveModule(form) {
     hidden.value = JSON.stringify(getChipValuesFromWrapper(wrapper));
   }
 
-  function getChipValues(form, name) {
+  function getChipValues(form, name, { commitPending = false } = {}) {
     const wrapper = form.querySelector(`[data-chip-name="${escapeCSSIdent(name)}"]`);
     if (!wrapper) return [];
+    if (commitPending) return commitPendingChipInput(wrapper, { source: 'save' });
     return getChipValuesFromWrapper(wrapper);
   }
 

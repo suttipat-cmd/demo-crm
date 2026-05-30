@@ -4,12 +4,22 @@ DEMO CRM สำหรับทีม CS ใช้จัดการบริษ�
 
 ## Version
 
-- Current: `v1.3.5`
-- Type: Search + Copy + Dashboard Date Hotfix
+- Current: `v1.3.7`
+- Type: Contact Email Chip Input Hotfix
 - SQL required:
   - `supabase/009_v1_2_9_activity_log_source.sql` ถ้ายังไม่เคยรันจาก v1.2.9
   - `supabase/010_v1_3_0_profile_avatar.sql` ถ้ายังไม่เคยรันจาก v1.3.0
   - `supabase/011_v1_3_2_notification_states.sql`
+
+
+## v1.3.7 Notes
+
+- แก้ช่อง `อีเมลผู้ติดต่อ` ในฟอร์มสร้าง/แก้ไขเดโม: ถ้า user พิมพ์อีเมลไว้แต่ยังไม่ได้กด Enter ระบบจะเพิ่มเป็นอีเมลให้อัตโนมัติตอนกดบันทึก
+- ถ้าอีเมลที่พิมพ์ค้างไว้ไม่ถูกต้อง จะแสดง toast แจ้ง error ชัดเจน
+- ปรับ placeholder ให้บอกว่า `พิมพ์อีเมล แล้วกด Enter หรือกดบันทึกได้เลย`
+- เพิ่ม error handling ของ form submit เพื่อไม่ให้ validation error หลุดเป็น Uncaught promise ใน Console
+- คง fallback การอ่านบัญชีเดโมเพื่อกันบาง session อ่าน row ไม่เจอ
+- ไม่ต้องรัน SQL เพิ่ม
 
 ## v1.3.5 Notes
 
