@@ -1,11 +1,11 @@
-/* DEMO CRM v1.3.8
+/* DEMO CRM v1.3.9
    Static SPA for GitHub Pages + Supabase.
    Security rule: never place service_role key, database password, or private token in this file.
 */
 (() => {
   'use strict';
 
-  const APP_VERSION = '1.3.8';
+  const APP_VERSION = '1.3.9';
   const APP_CONFIG = {
     SUPABASE_URL: 'https://hacmassihdqlgkmwoivs.supabase.co',
     SUPABASE_ANON_KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhhY21hc3NpaGRxbGdrbXdvaXZzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkxMjk1ODgsImV4cCI6MjA5NDcwNTU4OH0.TgkJCHaRndMDZY2SANXCjFLdMkHUd_bxJOb0K9Znpa8',
@@ -349,7 +349,8 @@
     const action = target.dataset.action;
     if (target.tagName !== 'FORM') event.preventDefault();
 
-    switch (action) {
+    try {
+      switch (action) {
       case 'logout':
         await State.sb.auth.signOut();
         break;
@@ -521,8 +522,11 @@
         removeChip(target);
         saveDemoDraftFromElement(target);
         break;
-      default:
-        break;
+        default:
+          break;
+      }
+    } catch (error) {
+      toast(safeError(error), 'error');
     }
   }
 
@@ -1583,8 +1587,6 @@
         <div class="stats-grid">
           ${statCard('เดโมในช่วงที่เลือก', rows.length)}
           ${statCard('ใกล้หมดอายุ 7 วัน', near7.length)}
-          ${statCard('หมดอายุ', expired.length)}
-          ${statCard('เป็นลูกค้าแล้ว', customers.length)}
         </div>
       </section>
 

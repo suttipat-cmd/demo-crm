@@ -4,8 +4,8 @@ DEMO CRM สำหรับทีม Customer Support ใช้จัดกา�
 
 ## Version
 
-- Current: `v1.3.8`
-- Type: Status Master + Dashboard Status Summary
+- Current: `v1.3.9`
+- Type: Dashboard Cleanup + Click Error Handling
 - Frontend: Static HTML/CSS/JS on GitHub Pages
 - Backend: Supabase Auth + Database
 - Email: Google Apps Script
@@ -27,6 +27,20 @@ supabase/
   reset_transaction_data_keep_masters.sql
 ```
 
+## v1.3.9 Update
+
+- ตัดการ์ด Dashboard เดิมที่ซ้ำกับ `สรุปตามสถานะ` ออก:
+  - `หมดอายุ`
+  - `เป็นลูกค้าแล้ว`
+- คงการ์ด Dashboard ที่ไม่ซ้ำไว้:
+  - `เดโมในช่วงที่เลือก`
+  - `ใกล้หมดอายุ 7 วัน`
+- เพิ่ม error handling กลางให้ click actions บนหน้าเว็บ
+  - ถ้า action ใดเกิด error จะขึ้น toast แทนการหลุดเป็น error ใน console
+  - ลดความเสี่ยงที่ผู้ใช้กดแล้วไม่รู้ว่าเกิดอะไรขึ้น
+- ไม่มีการเปลี่ยน database schema
+- อัปเดต README คู่กับโค้ดตาม release rule
+
 ## v1.3.8 Update
 
 - เพิ่ม `Status Master` ในเมนู `ตั้งค่าระบบ → สถานะ`
@@ -46,7 +60,9 @@ supabase/
 
 ## SQL Required
 
-ต้องรัน SQL นี้ก่อน deploy v1.3.8:
+v1.3.9 ไม่ต้องรัน SQL เพิ่ม ถ้าเคยรัน v1.3.8 แล้ว
+
+SQL ที่ต้องมีสำหรับฐานข้อมูลปัจจุบันคือ:
 
 ```txt
 supabase/012_v1_3_8_status_master.sql
@@ -121,7 +137,7 @@ supabase/reset_transaction_data_keep_masters.sql
 
 ```bash
 git add .
-git commit -m "Release v1.3.8 status master and dashboard summary"
+git commit -m "Release v1.3.9 dashboard cleanup and click error handling"
 git push
 ```
 
@@ -133,6 +149,10 @@ Windows: Ctrl + F5
 ```
 
 ## Smoke Test หลัง Deploy
+
+- ตรวจ Dashboard ว่าไม่มีการ์ดซ้ำ `หมดอายุ` และ `เป็นลูกค้าแล้ว` ใน section บนสุด
+- ตรวจ `สรุปตามสถานะ` ว่ายังแสดงสถานะครบและกด filter ได้
+- ทดสอบ click action เช่น รีเฟรช/ปิดรายการ/ลบ/ส่งอีเมล หาก error ต้องขึ้น toast
 
 - Login ด้วย admin
 - เปิด `ตั้งค่าระบบ → สถานะ`
