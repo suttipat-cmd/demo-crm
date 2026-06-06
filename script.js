@@ -1,4 +1,4 @@
-/* DEMO CRM v1.3.9
+/* DEMO CRM v1.4.0
    Static SPA for GitHub Pages + Supabase.
    Security rule: never place service_role key, database password, or private token in this file.
 */
@@ -1549,8 +1549,6 @@
     const allRows = getDemoRows();
     const chartRows = allRows;
 
-    const counts = countByStatus(rows);
-    const chartStatusCounts = countByStatus(chartRows);
     const chartModuleCounts = countByModule(chartRows);
     const chartTotal = chartRows.length;
     const near7 = allRows
@@ -1572,8 +1570,8 @@
       ${renderTopbar('แดชบอร์ด', '', `
         <a class="btn primary" href="#demos/new">+ สร้างเดโม</a>
       `)}
-      <section class="card">
-        <div class="filters compact">
+      <section class="card dashboard-control-card">
+        <div class="filters compact dashboard-controls">
           <div class="field">
             <label>เริ่ม</label>
             <input class="input" type="date" data-dashboard-range="start" value="${escapeAttr(start)}">
@@ -1582,11 +1580,11 @@
             <label>สิ้นสุด</label>
             <input class="input" type="date" data-dashboard-range="end" value="${escapeAttr(end)}">
           </div>
-          ${userIsAdmin() ? '<button class="btn warning" data-action="run-reminder-check">สร้างคิวเตือน 3 วัน</button>' : ''}
-        </div>
-        <div class="stats-grid">
-          ${statCard('เดโมในช่วงที่เลือก', rows.length)}
-          ${statCard('ใกล้หมดอายุ 7 วัน', near7.length)}
+          <div class="dashboard-quick-row">
+            ${userIsAdmin() ? '<button class="btn warning" data-action="run-reminder-check">สร้างคิวเตือน 3 วัน</button>' : ''}
+            ${compactStatCard('เดโมในช่วงที่เลือก', rows.length)}
+            ${compactStatCard('ใกล้หมดอายุ 7 วัน', near7.length)}
+          </div>
         </div>
       </section>
 
@@ -1600,8 +1598,8 @@
 
       <section class="grid two content-gap">
         <div class="card">
-          <div class="section-title"><h2>จำนวนตามสถานะ</h2></div>
-          ${barChart(chartStatusCounts, chartTotal)}
+          <div class="section-title"><h2>อัตราเป็นลูกค้า</h2></div>
+          ${customerRateCard(customers.length, chartTotal)}
         </div>
         <div class="card">
           <div class="section-title"><h2>จำนวนตามโมดูล</h2></div>
@@ -1624,6 +1622,33 @@
         <div class="label">${escapeHTML(label)}</div>
         <div class="value">${Number(value || 0).toLocaleString('th-TH')}</div>
         ${hint ? `<div class="hint">${escapeHTML(hint)}</div>` : ''}
+      </div>
+    `;
+  }
+
+  function compactStatCard(label, value) {
+    return `
+      <div class="dashboard-compact-stat">
+        <span>${escapeHTML(label)}</span>
+        <strong>${Number(value || 0).toLocaleString('th-TH')}</strong>
+      </div>
+    `;
+  }
+
+  function customerRateCard(customerCount, totalCount) {
+    const total = Number(totalCount || 0);
+    const customers = Number(customerCount || 0);
+    const percent = total ? Math.round((customers / total) * 100) : 0;
+
+    return `
+      <div class="customer-rate-kpi">
+        <div class="customer-rate-meter" style="--rate:${percent}%">
+          <span>${percent}%</span>
+        </div>
+        <div>
+          <strong>${customers.toLocaleString('th-TH')} / ${total.toLocaleString('th-TH')} รายการ</strong>
+          <p class="muted">คิดจากเดโมที่เป็นลูกค้าแล้วเทียบกับเดโมทั้งหมด</p>
+        </div>
       </div>
     `;
   }

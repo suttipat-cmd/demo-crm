@@ -4,8 +4,8 @@ DEMO CRM สำหรับทีม Customer Support ใช้จัดกา�
 
 ## Version
 
-- Current: `v1.3.9`
-- Type: Dashboard Cleanup + Click Error Handling
+- Current: `v1.4.0`
+- Type: Dashboard KPI Redesign
 - Frontend: Static HTML/CSS/JS on GitHub Pages
 - Backend: Supabase Auth + Database
 - Email: Google Apps Script
@@ -26,6 +26,18 @@ supabase/
   012_v1_3_8_status_master.sql
   reset_transaction_data_keep_masters.sql
 ```
+
+## v1.4.0 Update
+
+- ปรับ Dashboard เพื่อลดพื้นที่ส่วนบนและลดข้อมูลซ้ำ
+- ย้ายการ์ด `เดโมในช่วงที่เลือก` และ `ใกล้หมดอายุ 7 วัน` ไปอยู่บรรทัดเดียวกับปุ่ม `สร้างคิวเตือน 3 วัน`
+- เปลี่ยนการ์ดทั้ง 2 ใบเป็น compact KPI card ขนาดเล็ก
+- เปลี่ยน section เดิม `จำนวนตามสถานะ` เป็น KPI ใหม่ชื่อ `อัตราเป็นลูกค้า`
+- `อัตราเป็นลูกค้า` คำนวณจากจำนวนเดโมที่เป็นสถานะ `เป็นลูกค้าแล้ว` เทียบกับจำนวนเดโมทั้งหมด
+- คง section `สรุปตามสถานะ` ไว้สำหรับดูจำนวนตาม Status Master
+- คง section `จำนวนตามโมดูล` ไว้เหมือนเดิม
+- ไม่มีการเปลี่ยน database schema
+- อัปเดต README คู่กับโค้ดตาม release rule
 
 ## v1.3.9 Update
 
@@ -60,7 +72,7 @@ supabase/
 
 ## SQL Required
 
-v1.3.9 ไม่ต้องรัน SQL เพิ่ม ถ้าเคยรัน v1.3.8 แล้ว
+v1.4.0 ไม่ต้องรัน SQL เพิ่ม ถ้าเคยรัน v1.3.8 แล้ว
 
 SQL ที่ต้องมีสำหรับฐานข้อมูลปัจจุบันคือ:
 
@@ -137,7 +149,7 @@ supabase/reset_transaction_data_keep_masters.sql
 
 ```bash
 git add .
-git commit -m "Release v1.3.9 dashboard cleanup and click error handling"
+git commit -m "Release v1.4.0 dashboard cleanup and click error handling"
 git push
 ```
 
@@ -182,3 +194,20 @@ Windows: Ctrl + F5
 - ตั้ง Script Properties ใน Google Apps Script:
   - `SUPABASE_URL`
   - `SUPABASE_ANON_KEY`
+
+
+## v1.4.0 Update
+
+- ปรับ Dashboard เพื่อลดพื้นที่ส่วนบนและลดข้อมูลซ้ำ
+- ย้ายการ์ด `เดโมในช่วงที่เลือก` และ `ใกล้หมดอายุ 7 วัน` ไปอยู่บรรทัดเดียวกับปุ่ม `สร้างคิวเตือน 3 วัน`
+- เปลี่ยนการ์ดทั้ง 2 ใบเป็น compact KPI card ขนาดเล็ก
+- เปลี่ยน section เดิม `จำนวนตามสถานะ` เป็น KPI ใหม่ชื่อ `อัตราเป็นลูกค้า`
+- `อัตราเป็นลูกค้า` คำนวณจาก:
+  - จำนวนเดโมที่เป็นสถานะ `เป็นลูกค้าแล้ว`
+  - หารด้วยจำนวนเดโมทั้งหมด
+  - แสดงเป็นเปอร์เซ็นต์และจำนวนรายการประกอบ
+- คง section `สรุปตามสถานะ` ไว้สำหรับดูจำนวนแยกตาม status master
+- คง section `จำนวนตามโมดูล` ไว้เหมือนเดิม
+- ไม่มีการเปลี่ยน database schema
+- อัปเดต README คู่กับโค้ดตาม release rule
+
