@@ -1,11 +1,11 @@
-/* DEMO CRM v1.3.7
+/* DEMO CRM v1.3.8
    Static SPA for GitHub Pages + Supabase.
    Security rule: never place service_role key, database password, or private token in this file.
 */
 (() => {
   'use strict';
 
-  const APP_VERSION = '1.3.7';
+  const APP_VERSION = '1.3.8';
   const APP_CONFIG = {
     SUPABASE_URL: 'https://hacmassihdqlgkmwoivs.supabase.co',
     SUPABASE_ANON_KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhhY21hc3NpaGRxbGdrbXdvaXZzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkxMjk1ODgsImV4cCI6MjA5NDcwNTU4OH0.TgkJCHaRndMDZY2SANXCjFLdMkHUd_bxJOb0K9Znpa8',
@@ -58,6 +58,7 @@
     rounds: [],
     accounts: [],
     modules: [],
+    demoStatuses: [],
     roundModules: [],
     activityLogs: [],
     emailLogs: [],
@@ -316,6 +317,9 @@
           case 'admin-module-save':
             await saveModule(form);
             break;
+          case 'admin-status-save':
+            await saveDemoStatus(form);
+            break;
           case 'admin-template-save':
             await saveEmailTemplate(form);
             break;
@@ -482,6 +486,16 @@
           await deleteModule(target.dataset.id);
         });
         break;
+      case 'admin-status-delete':
+        await withButtonLoading(target, async () => {
+          await deleteDemoStatus(target.dataset.id);
+        });
+        break;
+      case 'dashboard-status-filter':
+        State.filters.status = target.dataset.statusId || '';
+        State.demoPage = 1;
+        location.hash = '#demos';
+        break;
       case 'admin-template-reset':
         await withButtonLoading(target, async () => {
           await resetTemplate(target.dataset.key);
@@ -546,7 +560,7 @@
 
     if (target.matches('[data-final-status-date]')) {
       const form = target.closest('form');
-      if (form && FINAL_STATUSES.has(target.value)) {
+      if (form && isFinalStatusValue(target.value)) {
         const endDate = form.querySelector('[name="end_date"]');
         if (endDate) endDate.value = todayISO();
       }
@@ -730,6 +744,7 @@
           State.sb.from('demo_rounds').select('*').is('deleted_at', null).order('updated_at', { ascending: false }),
           State.sb.from('demo_accounts').select('*').order('created_at', { ascending: true }),
           State.sb.from('modules').select('*').order('sort_order', { ascending: true }).order('name'),
+          State.sb.from('demo_statuses').select('*').order('sort_order', { ascending: true }).order('name'),
           State.sb.from('demo_round_modules').select('*'),
           State.sb.from('activity_logs').select('*').is('deleted_at', null).order('created_at', { ascending: false }),
           State.sb.from('email_logs').select('*').order('created_at', { ascending: false }).limit(250),
@@ -750,6 +765,7 @@
         rounds,
         accounts,
         modules,
+        demoStatuses,
         roundModules,
         activityLogs,
         emailLogs,
@@ -767,6 +783,7 @@
       State.rounds = rounds.data || [];
       State.accounts = accounts.data || [];
       State.modules = modules.data || [];
+      State.demoStatuses = normalizeStatusMasters(demoStatuses.data || []);
       State.roundModules = roundModules.data || [];
       State.activityLogs = activityLogs.data || [];
       State.emailLogs = emailLogs.data || [];
@@ -1111,6 +1128,110 @@
     return typeof value === 'string' && /^data:image\/(png|jpe?g|webp);base64,/i.test(value);
   }
 
+  function normalizeStatusMasters(statuses) {
+    const systemFallbacks = [
+      { name: STATUS.PENDING, system_key: 'pending', color: '#64748b', sort_order: 10, is_active: true, is_final: false },
+      { name: STATUS.ACTIVE, system_key: 'active', color: '#16a34a', sort_order: 20, is_active: true, is_final: false },
+      { name: STATUS.EXPIRED, system_key: 'expired', color: '#dc2626', sort_order: 30, is_active: true, is_final: false },
+      { name: STATUS.CLOSED, system_key: 'closed', color: '#7c3aed', sort_order: 40, is_active: true, is_final: true },
+      { name: STATUS.CUSTOMER, system_key: 'customer', color: '#0891b2', sort_order: 50, is_active: true, is_final: true }
+    ];
+
+    const rows = Array.isArray(statuses) ? statuses : [];
+    const byName = new Map(rows.map((item) => [normalize(item.name), item]));
+    const merged = [...rows];
+
+    for (const fallback of systemFallbacks) {
+      if (!byName.has(normalize(fallback.name)) && !rows.some((item) => item.system_key === fallback.system_key)) {
+        merged.push({ ...fallback, id: fallback.system_key });
+      }
+    }
+
+    return merged
+      .map((status, index) => ({
+        id: String(status.id || status.system_key || status.name || index),
+        name: status.name || '-',
+        color: normalizeStatusColor(status.color),
+        sort_order: Number(status.sort_order ?? 100),
+        is_active: status.is_active !== false,
+        is_final: Boolean(status.is_final),
+        system_key: status.system_key || null,
+        created_at: status.created_at || null,
+        updated_at: status.updated_at || null
+      }))
+      .sort((a, b) => (a.sort_order - b.sort_order) || a.name.localeCompare(b.name, 'th'));
+  }
+
+  function normalizeStatusColor(color) {
+    const value = String(color || '').trim();
+    if (/^#[0-9a-f]{6}$/i.test(value)) return value;
+    const tokenMap = {
+      pending: '#64748b',
+      active: '#16a34a',
+      expired: '#dc2626',
+      closed: '#7c3aed',
+      customer: '#0891b2'
+    };
+    return tokenMap[value] || '#2563eb';
+  }
+
+  function getSelectableStatuses(includeId = '') {
+    return State.demoStatuses.filter((status) => status.is_active || status.id === includeId);
+  }
+
+  function getStatusMetaById(id) {
+    if (!id) return null;
+    return State.demoStatuses.find((status) => String(status.id) === String(id)) || null;
+  }
+
+  function getStatusMetaByName(name) {
+    const key = normalize(name);
+    return State.demoStatuses.find((status) => normalize(status.name) === key) || null;
+  }
+
+  function getSystemStatusMeta(systemKey) {
+    return State.demoStatuses.find((status) => status.system_key === systemKey) || null;
+  }
+
+  function getRoundStatusMeta(round) {
+    if (!round) return null;
+    return getStatusMetaById(round.status_id) || getStatusMetaByName(round.status) || null;
+  }
+
+  function getRoundStatusId(round) {
+    return getRoundStatusMeta(round)?.id || '';
+  }
+
+  function getRoundStatusName(round) {
+    return getRoundStatusMeta(round)?.name || round?.status || STATUS.PENDING;
+  }
+
+  function isFinalStatusMeta(status) {
+    if (!status) return false;
+    return Boolean(status.is_final) || FINAL_STATUSES.has(status.name) || ['closed', 'customer'].includes(status.system_key);
+  }
+
+  function isFinalStatusValue(value) {
+    const status = getStatusMetaById(value) || getStatusMetaByName(value);
+    return isFinalStatusMeta(status);
+  }
+
+  function isAutoManagedStatus(status) {
+    if (!status) return true;
+    return ['pending', 'active', 'expired'].includes(status.system_key) || [STATUS.PENDING, STATUS.ACTIVE, STATUS.EXPIRED].includes(status.name);
+  }
+
+  function getComputedStatusMeta(round) {
+    const current = getRoundStatusMeta(round);
+    if (current && isFinalStatusMeta(current)) return current;
+    if (current && !isAutoManagedStatus(current)) return current;
+
+    const today = todayISO();
+    if (round?.start_date && today < round.start_date) return getSystemStatusMeta('pending') || getStatusMetaByName(STATUS.PENDING) || current;
+    if (round?.end_date && today > round.end_date) return getSystemStatusMeta('expired') || getStatusMetaByName(STATUS.EXPIRED) || current;
+    return getSystemStatusMeta('active') || getStatusMetaByName(STATUS.ACTIVE) || current;
+  }
+
   function buildNotifications({ includeDismissed = false } = {}) {
     if (!State.dataLoaded) return [];
 
@@ -1132,7 +1253,7 @@
     };
 
     for (const row of rows) {
-      if (!FINAL_STATUSES.has(row.effectiveStatus) && row.remainingDays >= 0 && row.remainingDays <= 7) {
+      if (!row.isFinalStatus && row.remainingDays >= 0 && row.remainingDays <= 7) {
         notifications.push({
           id: `near-${row.round.id}`,
           kind: 'near',
@@ -1145,7 +1266,7 @@
         });
       }
 
-      if (row.effectiveStatus === STATUS.EXPIRED) {
+      if ((row.statusSystemKey === 'expired' || row.effectiveStatus === STATUS.EXPIRED)) {
         notifications.push({
           id: `expired-${row.round.id}`,
           kind: 'expired',
@@ -1337,7 +1458,7 @@
     if (kind === 'near') {
       State.filters.nearOnly = true;
     } else if (kind === 'expired') {
-      State.filters.status = STATUS.EXPIRED;
+      State.filters.status = getSystemStatusMeta('expired')?.id || STATUS.EXPIRED;
     }
 
     State.demoPage = 1;
@@ -1429,18 +1550,18 @@
     const chartModuleCounts = countByModule(chartRows);
     const chartTotal = chartRows.length;
     const near7 = allRows
-      .filter((row) => !FINAL_STATUSES.has(row.effectiveStatus) && row.remainingDays >= 0 && row.remainingDays <= 7)
+      .filter((row) => !row.isFinalStatus && row.remainingDays >= 0 && row.remainingDays <= 7)
       .sort((a, b) => a.remainingDays - b.remainingDays);
 
     const expired = allRows
-      .filter((row) => row.effectiveStatus === STATUS.EXPIRED)
+      .filter((row) => (row.statusSystemKey === 'expired' || row.effectiveStatus === STATUS.EXPIRED))
       .sort((a, b) => a.remainingDays - b.remainingDays);
 
     const latest = [...allRows]
       .sort((a, b) => new Date(b.round.created_at || 0) - new Date(a.round.created_at || 0));
 
     const customers = allRows
-      .filter((row) => row.effectiveStatus === STATUS.CUSTOMER)
+      .filter((row) => (row.statusSystemKey === 'customer' || row.effectiveStatus === STATUS.CUSTOMER))
       .sort((a, b) => new Date(b.round.updated_at || 0) - new Date(a.round.updated_at || 0));
 
     return `
@@ -1461,13 +1582,18 @@
         </div>
         <div class="stats-grid">
           ${statCard('เดโมในช่วงที่เลือก', rows.length)}
-          ${statCard(STATUS.PENDING, counts[STATUS.PENDING] || 0)}
-          ${statCard(STATUS.ACTIVE, counts[STATUS.ACTIVE] || 0)}
           ${statCard('ใกล้หมดอายุ 7 วัน', near7.length)}
-          ${statCard(STATUS.EXPIRED, counts[STATUS.EXPIRED] || 0)}
-          ${statCard(STATUS.CLOSED, counts[STATUS.CLOSED] || 0)}
-          ${statCard(STATUS.CUSTOMER, counts[STATUS.CUSTOMER] || 0)}
+          ${statCard('หมดอายุ', expired.length)}
+          ${statCard('เป็นลูกค้าแล้ว', customers.length)}
         </div>
+      </section>
+
+      <section class="card content-gap">
+        <div class="section-title">
+          <h2>สรุปตามสถานะ</h2>
+          <span class="muted small-text">อ้างอิงช่วงวันที่ที่เลือก</span>
+        </div>
+        ${renderStatusSummaryCards(rows)}
       </section>
 
       <section class="grid two content-gap">
@@ -1496,6 +1622,37 @@
         <div class="label">${escapeHTML(label)}</div>
         <div class="value">${Number(value || 0).toLocaleString('th-TH')}</div>
         ${hint ? `<div class="hint">${escapeHTML(hint)}</div>` : ''}
+      </div>
+    `;
+  }
+
+  function renderStatusSummaryCards(rows) {
+    const total = Math.max(rows.length, 1);
+    const statuses = State.demoStatuses.length ? State.demoStatuses : normalizeStatusMasters([]);
+    const countById = {};
+    const countByName = {};
+
+    for (const row of rows) {
+      if (row.effectiveStatusId) countById[row.effectiveStatusId] = (countById[row.effectiveStatusId] || 0) + 1;
+      countByName[row.effectiveStatus] = (countByName[row.effectiveStatus] || 0) + 1;
+    }
+
+    return `
+      <div class="status-summary-grid">
+        ${statuses.map((status) => {
+          const value = countById[status.id] ?? countByName[status.name] ?? 0;
+          const percent = Math.round((value / total) * 100);
+          return `
+            <button class="status-summary-card" type="button" data-action="dashboard-status-filter" data-status-id="${escapeAttr(status.id)}" style="--status-color:${escapeAttr(normalizeStatusColor(status.color))}">
+              <div class="status-summary-top">
+                <span class="status-color-dot"></span>
+                <span>${escapeHTML(status.name)}</span>
+              </div>
+              <strong>${value.toLocaleString('th-TH')}</strong>
+              <div class="status-summary-percent">${percent}% ของรายการ</div>
+            </button>
+          `;
+        }).join('')}
       </div>
     `;
   }
@@ -1560,7 +1717,7 @@
             <label>สถานะ</label>
             <select class="select" data-filter="status">
               ${option('', 'ทุกสถานะ', State.filters.status)}
-              ${Object.values(STATUS).map((status) => option(status, status, State.filters.status)).join('')}
+              ${getSelectableStatuses().map((status) => option(status.id, status.name, State.filters.status)).join('')}
             </select>
           </div>
           <div class="field">
@@ -1742,7 +1899,7 @@
     return `
       <div class="report-action-list">
         ${rows.map((row) => {
-          const urgency = row.effectiveStatus === STATUS.EXPIRED
+          const urgency = (row.statusSystemKey === 'expired' || row.effectiveStatus === STATUS.EXPIRED)
             ? 'หมดอายุแล้ว'
             : row.remainingDays >= 0 && row.remainingDays <= 7
               ? `เหลือ ${formatRemaining(row.remainingDays)}`
@@ -1823,7 +1980,8 @@
       company_name: company.company_name || '',
       contact_name: company.contact_name || '',
       contact_emails: company.contact_emails || [],
-      status: round.status || STATUS.PENDING,
+      status_id: getRoundStatusId(round),
+      status: getRoundStatusName(round),
       responsible_person_id: getRoundResponsiblePersonId(round),
       start_date: startDate,
       end_date: endDate,
@@ -1885,8 +2043,8 @@
           <div class="grid four">
             <div class="field">
               <label>สถานะ <span class="required">*</span></label>
-              <select class="select" name="status" data-final-status-date required>
-                ${Object.values(STATUS).map((status) => option(status, status, values.status)).join('')}
+              <select class="select" name="status_id" data-final-status-date required>
+                ${getSelectableStatuses(values.status_id).map((status) => option(status.id, status.name, values.status_id)).join('')}
               </select>
             </div>
             <div class="field">
@@ -2124,6 +2282,7 @@
           ${adminTab('users', 'ผู้ใช้ระบบ')}
           ${adminTab('responsible', 'ผู้รับผิดชอบ')}
           ${adminTab('modules', 'โมดูล')}
+          ${adminTab('statuses', 'สถานะ')}
           ${adminTab('templates', 'เทมเพลตอีเมล')}
           ${adminTab('settings', 'ตั้งค่าอีเมล')}
           ${adminTab('brand', 'แบรนด์ / โลโก้')}
@@ -2131,6 +2290,7 @@
         ${State.adminTab === 'users' ? renderAdminUsers() : ''}
         ${State.adminTab === 'responsible' ? renderAdminResponsiblePeople() : ''}
         ${State.adminTab === 'modules' ? renderAdminModules() : ''}
+        ${State.adminTab === 'statuses' ? renderAdminStatuses() : ''}
         ${State.adminTab === 'templates' ? renderAdminTemplates() : ''}
         ${State.adminTab === 'settings' ? renderAdminSettings() : ''}
         ${State.adminTab === 'brand' ? renderAdminBrandSettings() : ''}
@@ -2336,6 +2496,91 @@
     `;
   }
 
+
+  function renderAdminStatuses() {
+    return `
+      <div class="config-warning">
+        สถานะที่ถูกใช้งานแล้วจะลบไม่ได้ แต่ยังเปลี่ยนชื่อ สี ลำดับ และสถานะเปิดใช้งานได้
+      </div>
+      <form data-action="admin-status-save" class="panel inline-form">
+        <input type="hidden" name="id" value="">
+        <div class="field">
+          <label>ชื่อสถานะ <span class="required">*</span></label>
+          <input class="input" name="name" placeholder="เช่น รอติดตามผล" required>
+        </div>
+        <div class="field">
+          <label>สี</label>
+          <input class="input color-input" type="color" name="color" value="#2563eb">
+        </div>
+        <div class="field">
+          <label>ลำดับ</label>
+          <input class="input" type="number" name="sort_order" value="100">
+        </div>
+        <label class="check-card status-check">
+          <input type="checkbox" name="is_final">
+          เป็นสถานะจบงาน
+        </label>
+        <button class="btn primary" type="submit">เพิ่มสถานะ</button>
+      </form>
+      <div class="table-wrap content-gap">
+        <table>
+          <thead>
+            <tr>
+              <th>สี</th>
+              <th>ชื่อสถานะ</th>
+              <th>ลำดับ</th>
+              <th>เปิดใช้งาน</th>
+              <th>สถานะจบงาน</th>
+              <th>การใช้งาน</th>
+              <th>การจัดการ</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${State.demoStatuses.map((status) => {
+              const usageCount = getStatusUsageCount(status.id);
+              const canDelete = usageCount === 0;
+              const formId = `status-${status.id}`;
+              return `
+                <tr>
+                  <td>
+                    <input class="input color-input" type="color" name="color" value="${escapeAttr(normalizeStatusColor(status.color))}" form="${formId}">
+                  </td>
+                  <td>
+                    <form data-action="admin-status-save" id="${formId}">
+                      <input type="hidden" name="id" value="${escapeAttr(status.id)}">
+                      <input class="input" name="name" value="${escapeAttr(status.name)}" required>
+                    </form>
+                    ${status.system_key ? `<div class="muted small-text">System: ${escapeHTML(status.system_key)}</div>` : ''}
+                  </td>
+                  <td><input class="input" type="number" name="sort_order" value="${escapeAttr(String(status.sort_order ?? 100))}" form="${formId}"></td>
+                  <td>
+                    <select class="select" name="is_active" form="${formId}">
+                      ${option('true', 'เปิดใช้งาน', String(Boolean(status.is_active)))}
+                      ${option('false', 'ปิดใช้งาน', String(Boolean(status.is_active)))}
+                    </select>
+                  </td>
+                  <td>
+                    <select class="select" name="is_final" form="${formId}">
+                      ${option('true', 'ใช่', String(Boolean(status.is_final)))}
+                      ${option('false', 'ไม่ใช่', String(Boolean(status.is_final)))}
+                    </select>
+                  </td>
+                  <td>${usageCount ? `${usageCount.toLocaleString('th-TH')} รายการ` : '<span class="muted">ยังไม่ถูกใช้</span>'}</td>
+                  <td>
+                    <div class="actions">
+                      <button class="btn small primary" type="submit" form="${formId}">บันทึก</button>
+                      ${canDelete ? `<button class="btn small danger" type="button" data-action="admin-status-delete" data-id="${escapeAttr(status.id)}">ลบ</button>` : ''}
+                    </div>
+                  </td>
+                </tr>
+              `;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>
+    `;
+  }
+
   function renderAdminTemplates() {
     return `
       <div class="grid two">
@@ -2469,14 +2714,18 @@
       companyId = data.id;
     }
 
-    const status = form.status.value;
+    const statusId = form.status_id.value;
+    const statusMeta = getStatusMetaById(statusId);
+    if (!statusMeta) throw new Error('กรุณาเลือกสถานะที่ถูกต้อง');
+    const status = statusMeta.name;
     const roundPayload = {
       company_id: companyId,
       status,
+      status_id: statusId,
       responsible_person_id: form.responsible_person_id.value,
       responsible_user_id: State.profile.id,
       start_date: form.start_date.value,
-      end_date: FINAL_STATUSES.has(status) ? todayISO() : form.end_date.value,
+      end_date: isFinalStatusMeta(statusMeta) ? todayISO() : form.end_date.value,
       renewal_no: Number(form.renewal_no.value || 0),
       updated_at: new Date().toISOString()
     };
@@ -2519,7 +2768,7 @@
       });
     }
 
-    if (FINAL_STATUSES.has(status)) {
+    if (isFinalStatusMeta(statusMeta)) {
       await cleanupClosedRoundLogs(roundId);
     }
 
@@ -2609,8 +2858,10 @@
 
     if (!window.confirm(`ปิดรายการเดโมของ ${row.company.company_name} หรือไม่?`)) return;
 
+    const closedStatus = getSystemStatusMeta('closed') || getStatusMetaByName(STATUS.CLOSED);
     const { error } = await State.sb.from('demo_rounds').update({
-      status: STATUS.CLOSED,
+      status: closedStatus?.name || STATUS.CLOSED,
+      status_id: closedStatus?.id || null,
       updated_at: new Date().toISOString()
     }).eq('id', roundId);
     if (error) throw error;
@@ -2630,8 +2881,10 @@
   }
 
   async function closeRenewedRound(roundId) {
+    const closedStatus = getSystemStatusMeta('closed') || getStatusMetaByName(STATUS.CLOSED);
     const { error } = await State.sb.from('demo_rounds').update({
-      status: STATUS.CLOSED,
+      status: closedStatus?.name || STATUS.CLOSED,
+      status_id: closedStatus?.id || null,
       end_date: todayISO(),
       updated_at: new Date().toISOString()
     }).eq('id', roundId);
@@ -2895,7 +3148,7 @@
   async function queueReminderEmails() {
     const dueRows = getDemoRows().filter((row) => {
       return !row.round.reminder_email_sent_at
-        && !FINAL_STATUSES.has(row.effectiveStatus)
+        && !row.isFinalStatus
         && row.remainingDays === 3;
     });
 
@@ -3059,6 +3312,64 @@ async function saveModule(form) {
 
   function getModuleUsageCount(moduleId) {
     return State.roundModules.filter((item) => item.module_id === moduleId).length;
+  }
+
+  function getStatusUsageCount(statusId) {
+    if (!statusId) return 0;
+    return State.rounds.filter((round) => String(round.status_id || '') === String(statusId)).length;
+  }
+
+  async function saveDemoStatus(form) {
+    const id = form.id?.value || '';
+    const payload = {
+      name: form.name.value.trim(),
+      color: normalizeStatusColor(form.color?.value || '#2563eb'),
+      sort_order: Number(form.sort_order?.value || 100),
+      is_active: form.is_active ? form.is_active.value === 'true' : true,
+      is_final: form.is_final
+        ? (form.is_final.type === 'checkbox' ? form.is_final.checked : form.is_final.value === 'true')
+        : false,
+      updated_at: new Date().toISOString()
+    };
+
+    if (!payload.name) throw new Error('กรุณากรอกชื่อสถานะ');
+
+    const duplicate = State.demoStatuses.find((status) =>
+      normalize(status.name) === normalize(payload.name) && String(status.id) !== String(id)
+    );
+    if (duplicate) throw new Error('มีสถานะชื่อนี้อยู่แล้ว');
+
+    const query = id
+      ? State.sb.from('demo_statuses').update(payload).eq('id', id)
+      : State.sb.from('demo_statuses').insert(payload);
+
+    const { error } = await query;
+    if (error) throw error;
+
+    form.reset();
+    await loadAllData();
+    render();
+    toast('บันทึกสถานะแล้ว', 'success');
+  }
+
+  async function deleteDemoStatus(id) {
+    const status = getStatusMetaById(id);
+    if (!status) return;
+
+    const usageCount = getStatusUsageCount(id);
+    if (usageCount > 0) {
+      toast('ลบไม่ได้ เพราะสถานะนี้ถูกใช้งานอยู่', 'error');
+      return;
+    }
+
+    if (!window.confirm(`ลบสถานะ "${status.name}" หรือไม่?`)) return;
+
+    const { error } = await State.sb.from('demo_statuses').delete().eq('id', id);
+    if (error) throw error;
+
+    await loadAllData();
+    render();
+    toast('ลบสถานะแล้ว', 'success');
   }
 
   async function saveProfileAdmin(form) {
@@ -3321,7 +3632,11 @@ async function saveModule(form) {
         const logs = State.activityLogs
           .filter((log) => log.company_id === company.id && isManualLog(log))
           .sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
-        const effectiveStatus = computeStatus(round);
+        const statusMeta = getComputedStatusMeta(round);
+        const effectiveStatus = statusMeta?.name || computeStatus(round);
+        const effectiveStatusId = statusMeta?.id || round.status_id || '';
+        const statusSystemKey = statusMeta?.system_key || null;
+        const isFinalStatus = isFinalStatusMeta(statusMeta);
         const totalDays = Math.max(daysBetween(round.start_date, round.end_date) + 1, 0);
         const remainingDays = daysBetween(todayISO(), round.end_date);
         const accumulatedDays = accumulatedDaysByCompany.get(company.id) || totalDays;
@@ -3333,7 +3648,11 @@ async function saveModule(form) {
           accounts,
           responsible,
           latestLog: logs[0] || null,
+          statusMeta,
           effectiveStatus,
+          effectiveStatusId,
+          statusSystemKey,
+          isFinalStatus,
           totalDays,
           accumulatedDays,
           remainingDays
@@ -3386,10 +3705,10 @@ async function saveModule(form) {
       ].filter(Boolean).join(' '));
 
       if (search && !haystack.includes(search)) return false;
-      if (State.filters.status && row.effectiveStatus !== State.filters.status) return false;
+      if (State.filters.status && row.effectiveStatusId !== State.filters.status && row.effectiveStatus !== State.filters.status) return false;
       if (State.filters.responsible && row.round.responsible_person_id !== State.filters.responsible) return false;
       if (State.filters.module && !row.modules.some((module) => module.id === State.filters.module)) return false;
-      if (State.filters.nearOnly && !(row.remainingDays >= 0 && row.remainingDays <= 7 && !FINAL_STATUSES.has(row.effectiveStatus))) return false;
+      if (State.filters.nearOnly && !(row.remainingDays >= 0 && row.remainingDays <= 7 && !row.isFinalStatus)) return false;
       return true;
     });
 
@@ -3428,7 +3747,8 @@ async function saveModule(form) {
   function countByStatus(rows) {
     const counts = {};
     for (const row of rows) {
-      counts[row.effectiveStatus] = (counts[row.effectiveStatus] || 0) + 1;
+      const label = row.effectiveStatus || '-';
+      counts[label] = (counts[label] || 0) + 1;
     }
     return counts;
   }
@@ -3755,7 +4075,8 @@ async function saveModule(form) {
       company_name: form.company_name?.value || '',
       contact_name: form.contact_name?.value || '',
       contact_emails: getChipValues(form, 'contact_emails'),
-      status: form.status?.value || STATUS.PENDING,
+      status_id: form.status_id?.value || getSystemStatusMeta('pending')?.id || '',
+      status: getStatusMetaById(form.status_id?.value)?.name || STATUS.PENDING,
       responsible_person_id: form.responsible_person_id?.value || '',
       start_date: form.start_date?.value || todayISO(),
       end_date: form.end_date?.value || addDaysISO(todayISO(), 14),
@@ -3895,7 +4216,12 @@ async function saveModule(form) {
     window.setTimeout(() => div.remove(), 4600);
   }
 
-  function statusBadge(status) {
+  function statusBadge(status, meta = null) {
+    const statusMeta = meta || getStatusMetaByName(status);
+    if (statusMeta) {
+      return `<span class="badge status-dynamic" style="--status-color:${escapeAttr(normalizeStatusColor(statusMeta.color))}">${escapeHTML(statusMeta.name)}</span>`;
+    }
+
     const className = status === STATUS.PENDING ? 'pending'
       : status === STATUS.ACTIVE ? 'active'
         : status === STATUS.EXPIRED ? 'expired'
@@ -3993,12 +4319,12 @@ async function saveModule(form) {
 
   function canCloseDemoRound(row) {
     if (!row?.round?.end_date) return false;
-    return row.round.end_date <= todayISO() && row.round.status !== STATUS.CLOSED;
+    return row.round.end_date <= todayISO() && row.statusSystemKey !== 'closed' && row.effectiveStatus !== STATUS.CLOSED;
   }
 
   function canSoftDelete(row) {
     if (userIsAdmin()) return true;
-    return row.round.created_by === State.profile?.id && row.effectiveStatus === STATUS.PENDING;
+    return row.round.created_by === State.profile?.id && (row.statusSystemKey === 'pending' || row.effectiveStatus === STATUS.PENDING);
   }
 
   function canModifyLog(log, latestId = null) {

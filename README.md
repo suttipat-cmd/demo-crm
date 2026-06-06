@@ -1,32 +1,14 @@
-# demo-crm
+# DEMO CRM
 
-DEMO CRM สำหรับทีม CS ใช้จัดการบริษัทที่ขอทดลองใช้งานระบบ
+DEMO CRM สำหรับทีม Customer Support ใช้จัดการบริษัทที่ขอทดลองใช้งานระบบ demo แทน Google Sheet
 
 ## Version
 
-- Current: `v1.3.7`
-- Type: Contact Email Chip Input Hotfix
-- SQL required:
-  - `supabase/009_v1_2_9_activity_log_source.sql` ถ้ายังไม่เคยรันจาก v1.2.9
-  - `supabase/010_v1_3_0_profile_avatar.sql` ถ้ายังไม่เคยรันจาก v1.3.0
-  - `supabase/011_v1_3_2_notification_states.sql`
-
-
-## v1.3.7 Notes
-
-- แก้ช่อง `อีเมลผู้ติดต่อ` ในฟอร์มสร้าง/แก้ไขเดโม: ถ้า user พิมพ์อีเมลไว้แต่ยังไม่ได้กด Enter ระบบจะเพิ่มเป็นอีเมลให้อัตโนมัติตอนกดบันทึก
-- ถ้าอีเมลที่พิมพ์ค้างไว้ไม่ถูกต้อง จะแสดง toast แจ้ง error ชัดเจน
-- ปรับ placeholder ให้บอกว่า `พิมพ์อีเมล แล้วกด Enter หรือกดบันทึกได้เลย`
-- เพิ่ม error handling ของ form submit เพื่อไม่ให้ validation error หลุดเป็น Uncaught promise ใน Console
-- คง fallback การอ่านบัญชีเดโมเพื่อกันบาง session อ่าน row ไม่เจอ
-- ไม่ต้องรัน SQL เพิ่ม
-
-## v1.3.5 Notes
-
-- แก้ช่องค้นหาในหน้า `รายการเดโม` และ `รายงาน` ให้พิมพ์ต่อเนื่องได้ ไม่เสีย focus หลังพิมพ์ทีละตัว
-- ปุ่ม `คัดลอกรหัสผ่าน` ในหน้า `รายการเดโม` จะคัดลอกเฉพาะรหัสผ่านเท่านั้น
-- หน้า `แดชบอร์ด` ค่าเริ่มต้นของวันที่ `เริ่ม` และ `สิ้นสุด` เป็นค่าว่าง เพื่อแสดงข้อมูลทั้งหมดก่อนเลือกช่วงวันที่
-- ไม่ต้องรัน SQL เพิ่มจาก v1.3.4
+- Current: `v1.3.8`
+- Type: Status Master + Dashboard Status Summary
+- Frontend: Static HTML/CSS/JS on GitHub Pages
+- Backend: Supabase Auth + Database
+- Email: Google Apps Script
 
 ## Files
 
@@ -41,118 +23,82 @@ supabase/
   009_v1_2_9_activity_log_source.sql
   010_v1_3_0_profile_avatar.sql
   011_v1_3_2_notification_states.sql
+  012_v1_3_8_status_master.sql
   reset_transaction_data_keep_masters.sql
 ```
 
-## v1.3.4 Update
+## v1.3.8 Update
 
-- หน้า `รายการเดโม` เพิ่มปุ่ม `คัดลอกอีเมล` ในคอลัมน์อีเมลผู้ติดต่อ
-- หน้า `รายการเดโม` เพิ่มปุ่ม `คัดลอกรหัสผ่าน` เพื่อคัดลอกบัญชีเดโมของรายการนั้น
-- เพิ่มปุ่ม `ปิด` ในคอลัมน์จัดการ เฉพาะรายการที่ถึง/เลยวันสิ้นสุดแล้ว และสถานะยังไม่ใช่ `ปิดรายการ`
-- ปุ่ม `ปิด` อัปเดตสถานะเป็น `ปิดรายการ` และกันกดซ้ำด้วย loading state
-- ไม่ต้องรัน SQL เพิ่มจาก v1.3.3
+- เพิ่ม `Status Master` ในเมนู `ตั้งค่าระบบ → สถานะ`
+- Admin สามารถเพิ่มสถานะใหม่เองได้
+- Admin แก้ชื่อ สี ลำดับ เปิด/ปิดใช้งาน และกำหนดว่าเป็นสถานะจบงานได้
+- สถานะที่ถูกใช้งานแล้วลบไม่ได้ แต่ยังเปลี่ยนชื่อได้
+- Dropdown สถานะในฟอร์มเดโมและ filter สถานะในหน้า `รายการเดโม` ดึงจาก master
+- Badge สีสถานะใช้สีจาก master
+- Dashboard เพิ่ม section `สรุปตามสถานะ` เป็น card ตามสถานะ พร้อมจำนวนและเปอร์เซ็นต์
+- กด card สถานะบน Dashboard แล้วไปหน้า `รายการเดโม` พร้อม filter สถานะนั้น
+- คง logic ระบบเดิม:
+  - สถานะระบบหลักยังมี `รอดำเนินการ`, `เปิดใช้งาน`, `หมดอายุ`, `ปิดรายการ`, `เป็นลูกค้าแล้ว`
+  - สถานะ `ปิดรายการ` และ `เป็นลูกค้าแล้ว` เป็นสถานะจบงาน
+  - การ auto status ตามวันที่ยังใช้กับสถานะระบบหลักเท่านั้น
+  - สถานะ custom จะไม่ถูก auto overwrite เพื่อไม่ให้ข้อมูล user หาย
+- อัปเดต README คู่กับโค้ดและ SQL ตาม release rule ล่าสุด
 
+## SQL Required
 
-## v1.3.3 Update
-
-- แก้หน้า `รายงาน / สรุปรายบริษัท` ให้เรียงจาก `บันทึกความคืบหน้าของบริษัท` ล่าสุดเท่านั้น
-- ใช้เฉพาะ `activity_logs.source = manual` หรือ log ที่ถือว่าเป็น manual log
-- ไม่นำกิจกรรมระบบ เช่น ส่งอีเมล, queue email, สร้างเดโม, ต่ออายุ, เปลี่ยนสถานะ มามีผลกับการเรียงลำดับ
-- บริษัทที่ยังไม่มีบันทึกความคืบหน้าแบบ manual จะอยู่ท้ายรายการ และเรียงตามชื่อบริษัท
-- ไม่ต้องรัน SQL เพิ่มจาก v1.3.2
-
-## v1.3.2 Update
-
-- เพิ่มสถานะอ่านแล้ว/ซ่อนแล้วของแจ้งเตือน แยกตาม user
-- ตัวเลขบนกระดิ่งนับเฉพาะแจ้งเตือนที่ยังไม่อ่าน
-- เมื่อเปิด popup แจ้งเตือน ระบบ mark รายการปัจจุบันเป็นอ่านแล้ว ทำให้ตัวเลขหาย
-- แจ้งเตือนเคสใหม่ เช่น demo round ใหม่, หมดอายุใหม่, email log ใหม่ จะแสดงตัวเลขใหม่อีกครั้ง
-- เพิ่มปุ่ม `×` เพื่อซ่อนแจ้งเตือนรายรายการ
-- เพิ่มปุ่ม `ล้างทั้งหมด` เพื่อซ่อนรายการที่กำลังแสดงในหมวดนั้น
-- เก็บ state ในตาราง `notification_states` บน Supabase
-- อัปเดต SQL ล้างข้อมูลทดสอบให้ล้าง `notification_states` ด้วย
-
-## สิ่งที่มีจาก v1.3.1
-
-- หน้า `รายการเดโม` แสดง `วันรอบนี้`, `วันคงเหลือ`, และ `วันสะสมทั้งหมด`
-- `วันรอบนี้` และ `วันคงเหลือ` คำนวณจาก demo round ล่าสุด
-- `วันสะสมทั้งหมด` รวมจำนวนวัน demo ทุก round ของบริษัทนั้น
-- หน้า detail แสดงประวัติรอบเดโมและจำนวนวันแต่ละรอบ
-- บันทึกความคืบหน้าใช้เฉพาะ log ที่ user พิมพ์เอง ไม่เอา system log มาปน
-
-## วิธีติดตั้ง / Deploy
-
-1. รัน SQL migration ใน Supabase SQL Editor:
+ต้องรัน SQL นี้ก่อน deploy v1.3.8:
 
 ```txt
-supabase/011_v1_3_2_notification_states.sql
+supabase/012_v1_3_8_status_master.sql
 ```
 
-ถ้ายังไม่เคยรัน migration เดิม ให้รันตามลำดับ:
+ถ้ายังไม่เคยรัน migration เดิม ให้รันตามลำดับนี้ก่อน:
 
 ```txt
 supabase/009_v1_2_9_activity_log_source.sql
 supabase/010_v1_3_0_profile_avatar.sql
 supabase/011_v1_3_2_notification_states.sql
+supabase/012_v1_3_8_status_master.sql
 ```
 
-2. แทนที่ไฟล์ใน GitHub repo ด้วยไฟล์ชุดนี้
+## Status Master Design
 
-3. Push ขึ้น GitHub:
-
-```bash
-git add .
-git commit -m "Release v1.3.4 demo list copy and close actions"
-git push
-```
-
-4. หลัง GitHub Pages deploy เสร็จ ให้ hard refresh:
+ตารางใหม่:
 
 ```txt
-Mac: Cmd + Shift + R
-Windows: Ctrl + F5
+demo_statuses
+- id
+- name
+- color
+- sort_order
+- is_active
+- is_final
+- system_key
+- created_at
+- updated_at
 ```
 
-## Google Apps Script Email
-
-ใช้ไฟล์:
+`demo_rounds` เพิ่ม field:
 
 ```txt
-apps-script/Code.gs
+status_id
 ```
 
-ตั้งค่า Script Properties:
+หมายเหตุ:
+- `demo_rounds.status` ยังถูกเก็บไว้เพื่อ backward compatibility
+- logic ใหม่ใช้ `status_id` เป็นหลัก
+- trigger จะ sync `status` จาก `demo_statuses.name`
+- ถ้าเปลี่ยนชื่อสถานะที่ใช้งานอยู่ ระบบจะแสดงชื่อใหม่ผ่าน master
 
-```txt
-SUPABASE_URL = https://your-project.supabase.co
-SUPABASE_ANON_KEY = anon public key
-SENDER_NAME = DEMO CRM
-```
+## Reset Transaction Data
 
-Deploy เป็น Web App:
-
-```txt
-Execute as: Me
-Who has access: Anyone
-```
-
-นำ Web App URL ไปใส่ใน:
-
-```txt
-ตั้งค่าระบบ → ตั้งค่าอีเมล → Google Apps Script Web App URL
-```
-
-ห้ามใส่ `service_role key`, database password หรือ secret ใด ๆ ใน frontend หรือ repo
-
-## SQL ล้างข้อมูลทดสอบ
-
-ใช้ไฟล์นี้เฉพาะตอนต้องการล้างข้อมูลเดโมก่อนเริ่มใช้งานจริง:
+ใช้สำหรับล้างข้อมูลทดสอบก่อนใช้งานจริง โดยเก็บ master data ไว้:
 
 ```txt
 supabase/reset_transaction_data_keep_masters.sql
 ```
 
-ไฟล์นี้จะล้าง:
+ไฟล์นี้ล้าง:
 - companies
 - demo_rounds
 - demo_accounts
@@ -161,24 +107,58 @@ supabase/reset_transaction_data_keep_masters.sql
 - email_logs
 - notification_states
 
-และเก็บ master:
-- profiles/users รวมรูปโปรไฟล์
+ไฟล์นี้เก็บ:
+- profiles/users
 - responsible_people
 - modules
+- demo_statuses
 - email_templates
-- settings/logo/fixed CC
+- settings/logo/fixed CC/Apps Script URL
 
-ควร backup database ก่อนรันจริง
+ควร backup database ก่อนรันจริงทุกครั้ง
 
-## Production checklist สั้น ๆ
+## Deploy
 
-- [ ] รัน SQL migration ครบ
-- [ ] login ด้วย admin ได้
-- [ ] admin แก้ชื่อ/role/status/รูปโปรไฟล์ผู้ใช้ได้
-- [ ] user ที่ถูกปิดใช้งาน login แล้วเห็นข้อความแจ้งเตือน
-- [ ] สร้าง demo ได้
-- [ ] เพิ่มบันทึกความคืบหน้าได้
-- [ ] ส่งอีเมลผ่าน Apps Script ได้
-- [ ] กระดิ่งแจ้งเตือนแสดง badge, อ่านแล้วตัวเลขหาย, ปิดรายรายการได้
-- [ ] รายงาน/export ทำงาน
-- [ ] ตรวจว่าไม่มี service_role key หรือ secret ใน repo
+```bash
+git add .
+git commit -m "Release v1.3.8 status master and dashboard summary"
+git push
+```
+
+หลัง GitHub Pages deploy เสร็จ ให้ hard refresh:
+
+```txt
+Mac: Cmd + Shift + R
+Windows: Ctrl + F5
+```
+
+## Smoke Test หลัง Deploy
+
+- Login ด้วย admin
+- เปิด `ตั้งค่าระบบ → สถานะ`
+- เพิ่มสถานะใหม่ 1 รายการ
+- แก้สี/ลำดับ/ชื่อสถานะ
+- สร้างเดโมโดยเลือกสถานะจาก master
+- ตรวจหน้า `รายการเดโม` ว่า filter สถานะทำงาน
+- ตรวจ badge สีสถานะ
+- ตรวจ Dashboard section `สรุปตามสถานะ`
+- กด card สถานะบน Dashboard แล้วต้องไปหน้า `รายการเดโม` พร้อม filter
+- ทดสอบลบสถานะที่ยังไม่ถูกใช้งาน
+- ทดสอบลบสถานะที่ถูกใช้งาน ต้องลบไม่ได้
+- ตรวจ flow เดิม: สร้างเดโม, เพิ่ม log, ส่งอีเมล, ต่ออายุ, ปิดรายการ, รายงาน, notification
+
+## Security Notes
+
+- ห้ามใส่ `service_role key`, database password, GitHub token หรือ Apps Script secret ใน frontend/repo
+- Frontend ใช้ Supabase anon public key เท่านั้น
+- RLS ต้องเปิดทุก table ที่ frontend เข้าถึง
+- `demo_statuses` ให้ authenticated อ่านได้ และ admin เท่านั้นที่เพิ่ม/แก้/ลบได้
+- การลบสถานะถูกกันทั้ง frontend และ RLS policy ถ้าสถานะถูกใช้งานอยู่
+
+## Known External Setup
+
+- สร้าง/จัดการ Auth User ผ่าน Supabase Dashboard
+- ตั้ง Google Apps Script Web App URL ที่ `ตั้งค่าระบบ → ตั้งค่าอีเมล`
+- ตั้ง Script Properties ใน Google Apps Script:
+  - `SUPABASE_URL`
+  - `SUPABASE_ANON_KEY`
