@@ -4,8 +4,8 @@ DEMO CRM สำหรับทีม Customer Support ใช้จัดกา�
 
 ## Version
 
-- Current: `v1.4.0`
-- Type: Dashboard KPI Redesign
+- Current: `v1.4.1`
+- Type: Stabilization UX Polish
 - Frontend: Static HTML/CSS/JS on GitHub Pages
 - Backend: Supabase Auth + Database
 - Email: Google Apps Script
@@ -26,6 +26,31 @@ supabase/
   012_v1_3_8_status_master.sql
   reset_transaction_data_keep_masters.sql
 ```
+
+## v1.4.1 Update
+
+- Sync version/cache ให้ตรงกันทุกไฟล์เป็น `v1.4.1`
+- ปรับ Dashboard date filter ให้สื่อความหมายชัดขึ้นเป็นช่วงวันที่เดโม:
+  - `เดโมตั้งแต่`
+  - `ถึงวันที่`
+  - filter ใช้ logic overlap กับ `start_date/end_date` ของ demo round
+- เพิ่มปุ่ม `ล้างช่วงวันที่` บน Dashboard เมื่อมีการเลือกวันที่
+- ปรับ logic เลือก demo round ล่าสุดเป็น:
+  1. `renewal_no` มากสุด
+  2. `end_date` ล่าสุด
+  3. `start_date` ล่าสุด
+  4. `created_at/updated_at` ล่าสุด
+- เพิ่มปุ่ม `ล้างตัวกรอง` ในหน้า `รายการเดโม`
+- เพิ่มแถบสรุปตัวกรองที่กำลังใช้งานในหน้า `รายการเดโม`
+- เพิ่มปุ่ม `ล้างการค้นหา` ในหน้า `รายงาน`
+- ปรับตาราง `รายการเดโม` ให้ compact ขึ้น ลดความสูง row และลดพื้นที่ปุ่ม
+- เพิ่ม unsaved changes warning สำหรับฟอร์มสร้าง/แก้ไขเดโม
+- เพิ่ม accessibility พื้นฐาน:
+  - `aria-current` ให้เมนู active
+  - `aria-live` ให้ toast
+  - aria-label ให้ date filter บน Dashboard
+- ไม่มีการเปลี่ยน database schema
+- อัปเดต README คู่กับโค้ดตาม release rule
 
 ## v1.4.0 Update
 
@@ -72,7 +97,7 @@ supabase/
 
 ## SQL Required
 
-v1.4.0 ไม่ต้องรัน SQL เพิ่ม ถ้าเคยรัน v1.3.8 แล้ว
+v1.4.1 ไม่ต้องรัน SQL เพิ่ม ถ้าเคยรัน v1.3.8 แล้ว
 
 SQL ที่ต้องมีสำหรับฐานข้อมูลปัจจุบันคือ:
 
@@ -149,7 +174,7 @@ supabase/reset_transaction_data_keep_masters.sql
 
 ```bash
 git add .
-git commit -m "Release v1.4.0 dashboard cleanup and click error handling"
+git commit -m "Release v1.4.1 stabilization UX polish"
 git push
 ```
 
@@ -161,6 +186,24 @@ Windows: Ctrl + F5
 ```
 
 ## Smoke Test หลัง Deploy
+
+### v1.4.1 Checklist
+
+- ตรวจ version/cache ใน browser ว่าโหลด `script.js?v=1.4.1`
+- Dashboard:
+  - วันที่ `เดโมตั้งแต่/ถึงวันที่` default เป็นค่าว่าง
+  - เลือกช่วงวันที่แล้วสรุปตามสถานะต้องเปลี่ยนตามช่วง demo
+  - กด `ล้างช่วงวันที่` แล้วข้อมูลกลับมาเป็นทั้งหมด
+- รายการเดโม:
+  - ใช้ search/filter แล้วมีแถบตัวกรอง
+  - กด `ล้างตัวกรอง` แล้วข้อมูลกลับมาเป็นทั้งหมด
+  - ตาราง compact ขึ้นและยัง copy email/password ได้
+- รายงาน:
+  - ค้นหาแล้วกด `ล้างการค้นหา` ได้
+- ฟอร์มเดโม:
+  - แก้ข้อมูลแล้วกดเมนูออกจากหน้า ต้องมี confirm เตือนข้อมูลยังไม่บันทึก
+  - บันทึกสำเร็จแล้วไม่เตือนซ้ำ
+- ตรวจ route หลัก: แดชบอร์ด, รายการเดโม, สร้างเดโม, รายงาน, ตั้งค่าระบบ
 
 - ตรวจ Dashboard ว่าไม่มีการ์ดซ้ำ `หมดอายุ` และ `เป็นลูกค้าแล้ว` ใน section บนสุด
 - ตรวจ `สรุปตามสถานะ` ว่ายังแสดงสถานะครบและกด filter ได้
