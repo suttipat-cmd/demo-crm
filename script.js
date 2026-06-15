@@ -1,11 +1,11 @@
-/* DEMO CRM v1.4.3
+/* DEMO CRM v1.4.4
    Static SPA for GitHub Pages + Supabase.
    Security rule: never place service_role key, database password, or private token in this file.
 */
 (() => {
   'use strict';
 
-  const APP_VERSION = '1.4.3';
+  const APP_VERSION = '1.4.4';
   const APP_CONFIG = {
     SUPABASE_URL: 'https://hacmassihdqlgkmwoivs.supabase.co',
     SUPABASE_ANON_KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhhY21hc3NpaGRxbGdrbXdvaXZzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkxMjk1ODgsImV4cCI6MjA5NDcwNTU4OH0.TgkJCHaRndMDZY2SANXCjFLdMkHUd_bxJOb0K9Znpa8',
@@ -1817,7 +1817,12 @@
               const canClose = canCloseDemoRound(row);
               return `
                 <tr>
-                  <td><a href="#demos/${row.round.id}"><strong>${escapeHTML(row.company.company_name)}</strong></a></td>
+                  <td>
+                    <div class="company-copy-cell">
+                      <a href="#demos/${row.round.id}"><strong>${escapeHTML(row.company.company_name)}</strong></a>
+                      <button class="btn tiny ghost" type="button" data-action="copy" data-copy="${escapeAttr(row.company.company_name)}" aria-label="คัดลอกชื่อบริษัท ${escapeAttr(row.company.company_name)}">คัดลอกชื่อบริษัท</button>
+                    </div>
+                  </td>
                   <td>${escapeHTML(row.company.contact_name || '-')}</td>
                   <td>
                     <div class="contact-copy-cell">
@@ -3025,10 +3030,10 @@
     const message = form.message.value.trim();
     if (!message) throw new Error('ข้อความบันทึกห้ามว่าง');
 
-    const { error } = await State.sb.from('activity_logs').update({
-      message,
-      updated_at: new Date().toISOString()
-    }).eq('id', id);
+    const { error } = await State.sb.rpc('update_latest_activity_log_message', {
+      log_id: id,
+      new_message: message
+    });
     if (error) throw activityLogMutationError(error);
 
     closeModal();
@@ -3048,9 +3053,9 @@
 
     if (!window.confirm('ลบบันทึกนี้หรือไม่?')) return;
 
-    const { error } = await State.sb.from('activity_logs').update({
-      deleted_at: new Date().toISOString()
-    }).eq('id', id);
+    const { error } = await State.sb.rpc('soft_delete_latest_activity_log', {
+      log_id: id
+    });
     if (error) throw activityLogMutationError(error);
 
     await loadAllData();
@@ -4537,8 +4542,25 @@ async function saveModule(form) {
 
   function activityLogMutationError(error) {
     const message = safeError(error);
-    if (/row-level security/i.test(message) || /can_update_latest_activity_log/i.test(message)) {
-      return new Error('แก้ไข/ลบบันทึกไม่สำเร็จ: กรุณารัน SQL v1.4.3 เพื่ออัปเดต RLS ของ activity_logs แล้วลองใหม่');
+    if (/Only latest manual activity log/i.test(message)) {
+      return new Error('แก้ไข/ลบได้เฉพาะบันทึกล่าสุดของบริษัท และต้องเป็นเจ้าของบันทึกหรือผู้ดูแลระบบเท่านั้น');
+    }
+    if (/Activity log message cannot be empty/i.test(message)) {
+      return new Error('ข้อความบันทึกห้ามว่าง');
+    }
+    if (/Activity log not found/i.test(message)) {
+      return new Error('ไม่พบบันทึกที่ต้องการแก้ไข/ลบ');
+    }
+    if (
+      /row-level security/i.test(message)
+      || /can_update_latest_activity_log/i.test(message)
+      || /activity_log_can_mutate/i.test(message)
+      || /soft_delete_latest_activity_log/i.test(message)
+      || /update_latest_activity_log_message/i.test(message)
+      || /could not find.*function/i.test(message)
+      || /schema cache/i.test(message)
+    ) {
+      return new Error('แก้ไข/ลบบันทึกไม่สำเร็จ: กรุณารัน SQL v1.4.4 เพื่ออัปเดต RPC/RLS ของ activity_logs แล้วลองใหม่');
     }
     return error;
   }

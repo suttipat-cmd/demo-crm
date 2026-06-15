@@ -4,8 +4,8 @@ DEMO CRM สำหรับทีม Customer Support ใช้จัดกา�
 
 ## Version
 
-- Current: `v1.4.3`
-- Type: Activity Log RLS Hotfix
+- Current: `v1.4.4`
+- Type: Activity Log RPC/RLS Hotfix + Company Copy UX
 - Frontend: Static HTML/CSS/JS on GitHub Pages
 - Backend: Supabase Auth + Database
 - Email: Google Apps Script
@@ -25,8 +25,39 @@ supabase/
   011_v1_3_2_notification_states.sql
   012_v1_3_8_status_master.sql
   013_v1_4_3_activity_log_latest_manual_rls.sql
+  014_v1_4_4_activity_log_rpc_rls.sql
   reset_transaction_data_keep_masters.sql
 ```
+
+## v1.4.4 Update
+
+- แก้ root cause ที่กด `ลบ` / `แก้ไข` activity log แล้วยังติด RLS แม้รัน SQL v1.4.3 แล้ว
+- เพิ่ม SQL migration `supabase/014_v1_4_4_activity_log_rpc_rls.sql`
+- เพิ่ม RPC ที่ enforce permission เองโดยไม่ปิด RLS:
+  - `update_latest_activity_log_message(log_id, new_message)`
+  - `soft_delete_latest_activity_log(log_id)`
+- ปรับ `UPDATE policy` ของ `activity_logs` ให้รองรับ soft delete ด้วย `deleted_at`
+- ยังคง rule เดิม: แก้ไข/ลบได้เฉพาะ `manual log` ล่าสุดของแต่ละบริษัท และต้องเป็นเจ้าของ record หรือ admin
+- เพิ่มปุ่ม `คัดลอกชื่อบริษัท` ใต้คอลัมน์ `ชื่อบริษัท` ในหน้า `รายการเดโม`
+- ปรับ error message ให้ชี้ไปที่ SQL v1.4.4
+- Sync version/cache เป็น `v1.4.4`
+
+### Install SQL v1.4.4
+
+1. Backup database ก่อน
+2. เปิด Supabase SQL Editor
+3. รันไฟล์:
+
+```txt
+supabase/014_v1_4_4_activity_log_rpc_rls.sql
+```
+
+4. Deploy frontend แล้ว hard refresh
+5. ทดสอบแก้ไข/ลบ manual log ล่าสุดอีกครั้ง
+
+Rollback note:
+- ถ้าต้อง rollback frontend ให้กลับไป tag/commit v1.4.3
+- ถ้าต้อง rollback SQL ให้แจ้งก่อน เพราะ v1.4.4 เพิ่ม RPC และ policy ใหม่ที่ใช้กับ frontend v1.4.4 โดยตรง
 
 ## v1.4.3 Update
 

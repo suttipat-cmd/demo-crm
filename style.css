@@ -3774,12 +3774,21 @@ tbody tr:hover {
 }
 
 
-.contact-copy-cell {
+.contact-copy-cell,
+.company-copy-cell {
   display: grid;
   gap: 8px;
+}
+
+.contact-copy-cell {
   min-width: 220px;
 }
 
+.company-copy-cell {
+  min-width: 180px;
+}
+
+.company-copy-cell a,
 .contact-copy-cell .cell-main {
   display: block;
   max-width: 320px;
