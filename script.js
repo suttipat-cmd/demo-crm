@@ -1,11 +1,11 @@
-/* DEMO CRM v1.4.2
+/* DEMO CRM v1.4.3
    Static SPA for GitHub Pages + Supabase.
    Security rule: never place service_role key, database password, or private token in this file.
 */
 (() => {
   'use strict';
 
-  const APP_VERSION = '1.4.2';
+  const APP_VERSION = '1.4.3';
   const APP_CONFIG = {
     SUPABASE_URL: 'https://hacmassihdqlgkmwoivs.supabase.co',
     SUPABASE_ANON_KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhhY21hc3NpaGRxbGdrbXdvaXZzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkxMjk1ODgsImV4cCI6MjA5NDcwNTU4OH0.TgkJCHaRndMDZY2SANXCjFLdMkHUd_bxJOb0K9Znpa8',
@@ -2160,7 +2160,7 @@
 
     const companyLogs = State.activityLogs
       .filter((log) => log.company_id === row.company.id && isManualLog(log))
-      .sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
+      .sort(compareActivityLogLatest);
 
     const history = getAllDemoRows()
       .filter((item) => item.company.id === row.company.id)
@@ -3029,7 +3029,7 @@
       message,
       updated_at: new Date().toISOString()
     }).eq('id', id);
-    if (error) throw error;
+    if (error) throw activityLogMutationError(error);
 
     closeModal();
     await loadAllData();
@@ -3051,7 +3051,7 @@
     const { error } = await State.sb.from('activity_logs').update({
       deleted_at: new Date().toISOString()
     }).eq('id', id);
-    if (error) throw error;
+    if (error) throw activityLogMutationError(error);
 
     await loadAllData();
     render();
@@ -4388,10 +4388,16 @@ async function saveModule(form) {
     return row.round.created_by === State.profile?.id && (row.statusSystemKey === 'pending' || row.effectiveStatus === STATUS.PENDING);
   }
 
+  function compareActivityLogLatest(a, b) {
+    const dateDiff = new Date(b?.created_at || 0) - new Date(a?.created_at || 0);
+    if (dateDiff !== 0) return dateDiff;
+    return String(b?.id || '').localeCompare(String(a?.id || ''));
+  }
+
   function canModifyLog(log, latestId = null) {
     const companyLogs = State.activityLogs
       .filter((item) => item.company_id === log.company_id && isManualLog(item))
-      .sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
+      .sort(compareActivityLogLatest);
     const actualLatestId = latestId || companyLogs[0]?.id;
     if (!actualLatestId || log.id !== actualLatestId) return false;
     return userIsAdmin() || log.created_by === State.profile?.id;
@@ -4527,6 +4533,14 @@ async function saveModule(form) {
       Promise.resolve(promise),
       timeout
     ]).finally(() => window.clearTimeout(timerId));
+  }
+
+  function activityLogMutationError(error) {
+    const message = safeError(error);
+    if (/row-level security/i.test(message) || /can_update_latest_activity_log/i.test(message)) {
+      return new Error('แก้ไข/ลบบันทึกไม่สำเร็จ: กรุณารัน SQL v1.4.3 เพื่ออัปเดต RLS ของ activity_logs แล้วลองใหม่');
+    }
+    return error;
   }
 
   function safeError(error) {

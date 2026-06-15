@@ -4,8 +4,8 @@ DEMO CRM สำหรับทีม Customer Support ใช้จัดกา�
 
 ## Version
 
-- Current: `v1.4.2`
-- Type: Activity Log Input Hotfix
+- Current: `v1.4.3`
+- Type: Activity Log RLS Hotfix
 - Frontend: Static HTML/CSS/JS on GitHub Pages
 - Backend: Supabase Auth + Database
 - Email: Google Apps Script
@@ -24,8 +24,21 @@ supabase/
   010_v1_3_0_profile_avatar.sql
   011_v1_3_2_notification_states.sql
   012_v1_3_8_status_master.sql
+  013_v1_4_3_activity_log_latest_manual_rls.sql
   reset_transaction_data_keep_masters.sql
 ```
+
+## v1.4.3 Update
+
+- แก้ root cause error `new row violates row-level security policy for table "activity_logs"` ตอนกดลบบันทึก
+- เพิ่ม SQL migration `supabase/013_v1_4_3_activity_log_latest_manual_rls.sql`
+- ปรับ RLS/trigger ของ `activity_logs` ให้ตรงกับ UX:
+  - แก้ไข/ลบได้เฉพาะ `manual log` ล่าสุดของแต่ละบริษัท
+  - system log เช่น log ส่งอีเมล/เปลี่ยนสถานะ จะไม่ทำให้ manual log ล่าสุดถูกล็อกผิด
+  - soft delete ด้วย `deleted_at` ผ่าน RLS ได้ถูกต้อง
+- ปรับ frontend ให้เรียงบันทึกล่าสุดแบบ deterministic ด้วย `created_at` และ `id`
+- เพิ่มข้อความ error ที่ชัดขึ้น หากยังไม่ได้รัน SQL v1.4.3
+- อัปเดต README คู่กับโค้ดและ SQL ตาม release rule
 
 ## v1.4.2 Update
 
@@ -84,22 +97,27 @@ supabase/
 
 ## SQL Required
 
-v1.4.0 ไม่ต้องรัน SQL เพิ่ม ถ้าเคยรัน v1.3.8 แล้ว
-
-SQL ที่ต้องมีสำหรับฐานข้อมูลปัจจุบันคือ:
+v1.4.3 ต้องรัน SQL เพิ่ม 1 ไฟล์หลัง deploy โค้ด หรือก่อน deploy ก็ได้:
 
 ```txt
-supabase/012_v1_3_8_status_master.sql
+supabase/013_v1_4_3_activity_log_latest_manual_rls.sql
 ```
 
-ถ้ายังไม่เคยรัน migration เดิม ให้รันตามลำดับนี้ก่อน:
+ถ้ายังไม่เคยรัน migration เดิม ให้รันตามลำดับนี้ก่อนใช้งานเวอร์ชันล่าสุด:
 
 ```txt
 supabase/009_v1_2_9_activity_log_source.sql
 supabase/010_v1_3_0_profile_avatar.sql
 supabase/011_v1_3_2_notification_states.sql
 supabase/012_v1_3_8_status_master.sql
+supabase/013_v1_4_3_activity_log_latest_manual_rls.sql
 ```
+
+หมายเหตุ:
+- ห้ามปิด RLS เพื่อแก้ error
+- SQL v1.4.3 เป็น idempotent และรันซ้ำได้
+- ควร backup database ก่อนรันจริงทุกครั้ง
+- Rollback: ถ้าเกิดปัญหา ให้ restore database backup ก่อนรัน v1.4.3 หรือแจ้ง error exact message ก่อนแก้ต่อ
 
 ## Status Master Design
 
@@ -161,7 +179,7 @@ supabase/reset_transaction_data_keep_masters.sql
 
 ```bash
 git add .
-git commit -m "Release v1.4.2 activity log input hotfix"
+git commit -m "Release v1.4.3 activity log RLS hotfix"
 git push
 ```
 
@@ -191,6 +209,16 @@ Windows: Ctrl + F5
 - ทดสอบลบสถานะที่ถูกใช้งาน ต้องลบไม่ได้
 - ตรวจ flow เดิม: สร้างเดโม, เพิ่ม log, ส่งอีเมล, ต่ออายุ, ปิดรายการ, รายงาน, notification
 
+
+## Smoke Test เพิ่มเติมสำหรับ v1.4.3
+
+- รัน SQL `supabase/013_v1_4_3_activity_log_latest_manual_rls.sql` ใน Supabase SQL Editor
+- Login ด้วย user ปกติที่เป็นเจ้าของบันทึก
+- เปิดหน้ารายละเอียดบริษัทที่มี manual log ล่าสุด และมี system log ใหม่กว่าหรือเคยส่งอีเมล
+- กด `ลบ` manual log ล่าสุด ต้องลบได้และไม่เจอ RLS error
+- เพิ่ม manual log ใหม่ แล้วกด `แก้ไข` ต้องแก้ได้
+- ตรวจว่าบันทึกเก่ายัง disabled ปุ่มแก้ไข/ลบ
+- Login ด้วย admin แล้วตรวจว่า UI ยังแก้ไข/ลบได้เฉพาะ manual log ล่าสุดเท่านั้น
 
 ## Smoke Test เพิ่มเติมสำหรับ v1.4.2
 
