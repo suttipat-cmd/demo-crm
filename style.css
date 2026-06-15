@@ -3882,93 +3882,23 @@ tbody tr:hover {
 
 
 
-/* v1.4.1 Stabilization UX polish */
-.active-filter-bar {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  align-items: center;
-  margin: -2px 0 14px;
-  color: var(--muted);
-  font-size: 12px;
+/* v1.4.2 Activity log multiline input */
+.log-form {
+  align-items: start;
 }
 
-.active-filter-bar span {
-  font-weight: 800;
-  color: #475467;
+.log-form .activity-message-input {
+  min-height: 112px;
+  line-height: 1.6;
 }
 
-.active-filter-bar em {
-  font-style: normal;
-  padding: 5px 9px;
-  border-radius: 999px;
-  background: var(--primary-weak);
-  color: #1d4ed8;
-  font-weight: 800;
+.timeline-body p {
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
-.demo-list-table-wrap {
-  border-color: rgba(226, 232, 240, 0.9);
-}
-
-.demo-list-table {
-  min-width: 1320px;
-}
-
-.demo-list-table th,
-.demo-list-table td {
-  padding: 9px 10px;
-  vertical-align: middle;
-}
-
-.demo-list-table td {
-  font-size: 13px;
-}
-
-.demo-list-table .actions {
-  gap: 6px;
-}
-
-.demo-list-table .btn.small {
-  min-height: 29px;
-  padding: 5px 8px;
-}
-
-.demo-list-table .contact-copy-cell {
-  gap: 5px;
-  min-width: 180px;
-}
-
-.demo-list-table .contact-copy-cell .cell-main,
-.demo-list-table td:nth-child(12) {
-  max-width: 240px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.report-toolbar-note {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-}
-
-.dashboard-controls .field label {
-  white-space: nowrap;
-}
-
-@media (max-width: 760px) {
-  .dashboard-quick-row {
-    width: 100%;
-  }
-
-  .dashboard-compact-stat {
-    flex: 1 1 160px;
-  }
-
-  .report-toolbar-note {
-    justify-content: flex-start;
-  }
+.timeline-head .btn:disabled {
+  opacity: 0.46;
+  cursor: not-allowed;
+  filter: grayscale(0.2);
 }

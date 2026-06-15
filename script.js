@@ -1,11 +1,11 @@
-/* DEMO CRM v1.4.1
+/* DEMO CRM v1.4.2
    Static SPA for GitHub Pages + Supabase.
    Security rule: never place service_role key, database password, or private token in this file.
 */
 (() => {
   'use strict';
 
-  const APP_VERSION = '1.4.1';
+  const APP_VERSION = '1.4.2';
   const APP_CONFIG = {
     SUPABASE_URL: 'https://hacmassihdqlgkmwoivs.supabase.co',
     SUPABASE_ANON_KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhhY21hc3NpaGRxbGdrbXdvaXZzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkxMjk1ODgsImV4cCI6MjA5NDcwNTU4OH0.TgkJCHaRndMDZY2SANXCjFLdMkHUd_bxJOb0K9Znpa8',
@@ -84,16 +84,13 @@
     reportSearch: '',
     adminTab: 'users',
     searchRenderTimer: null,
-    reportRenderTimer: null,
-    demoFormDirty: false
+    reportRenderTimer: null
   };
 
   const $ = (selector, root = document) => root.querySelector(selector);
   const $$ = (selector, root = document) => Array.from(root.querySelectorAll(selector));
 
   document.addEventListener('DOMContentLoaded', boot);
-  document.addEventListener('click', handleUnsavedRouteClick, true);
-  window.addEventListener('beforeunload', handleBeforeUnload);
   window.addEventListener('hashchange', () => {
     State.currentRoute = location.hash || '#dashboard';
     State.notificationsOpen = false;
@@ -314,6 +311,9 @@
           case 'activity-add':
             await addActivityLog(form);
             break;
+          case 'log-edit-save':
+            await saveLogEdit(form);
+            break;
           case 'admin-responsible-save':
             await saveResponsiblePerson(form);
             break;
@@ -400,20 +400,6 @@
       case 'notification-filter':
         applyNotificationFilter(target.dataset.kind || 'all');
         break;
-      case 'dashboard-range-clear':
-        State.dashboardRange = defaultMonthRange();
-        resetDashboardPages();
-        render();
-        break;
-      case 'demo-filters-clear':
-        resetDemoFilters();
-        render();
-        break;
-      case 'report-search-clear':
-        State.reportSearch = '';
-        State.reportPage = 1;
-        render();
-        break;
       case 'brand-logo-reset':
         await withButtonLoading(target, async () => {
           await resetBrandLogo();
@@ -427,12 +413,10 @@
         break;
       case 'account-add':
         addAccountRow();
-        markDemoFormDirty(target);
         saveDemoDraftFromElement(target);
         break;
       case 'account-remove':
         target.closest('[data-account-row]')?.remove();
-        markDemoFormDirty(target);
         saveDemoDraftFromElement(target);
         break;
       case 'password-toggle':
@@ -539,7 +523,6 @@
         break;
       case 'chip-remove':
         removeChip(target);
-        markDemoFormDirty(target);
         saveDemoDraftFromElement(target);
         break;
         default:
@@ -590,7 +573,6 @@
       }
     }
 
-    markDemoFormDirty(target);
     saveDemoDraftFromElement(target);
   }
 
@@ -610,7 +592,6 @@
       return;
     }
 
-    markDemoFormDirty(target);
     saveDemoDraftFromElement(target);
   }
 
@@ -648,7 +629,6 @@
     if (event.key === 'Enter' || event.key === ',') {
       event.preventDefault();
       addChipFromInput(input);
-      markDemoFormDirty(input);
       saveDemoDraftFromElement(input);
     }
 
@@ -656,50 +636,8 @@
       const wrapper = input.closest('[data-chip-name]');
       const chips = $$('.chip', wrapper);
       chips[chips.length - 1]?.querySelector('[data-action="chip-remove"]')?.click();
-      markDemoFormDirty(input);
       saveDemoDraftFromElement(input);
     }
-  }
-
-  function isDemoFormElement(element) {
-    return Boolean(element?.closest?.('form[data-action="demo-save"]'));
-  }
-
-  function markDemoFormDirty(element) {
-    if (isDemoFormElement(element)) {
-      State.demoFormDirty = true;
-    }
-  }
-
-  function hasUnsavedDemoForm() {
-    return Boolean(State.demoFormDirty && $('form[data-action="demo-save"]'));
-  }
-
-  function confirmDiscardDemoChanges() {
-    if (!hasUnsavedDemoForm()) return true;
-    return window.confirm('มีข้อมูลเดโมที่ยังไม่ได้บันทึก ต้องการออกจากหน้านี้หรือไม่?');
-  }
-
-  function handleUnsavedRouteClick(event) {
-    const link = event.target.closest?.('a[href^="#"]');
-    if (!link || !hasUnsavedDemoForm()) return;
-    const targetHash = link.getAttribute('href');
-    if (!targetHash || targetHash === location.hash) return;
-
-    if (!confirmDiscardDemoChanges()) {
-      event.preventDefault();
-      event.stopPropagation();
-      return;
-    }
-
-    State.demoFormDirty = false;
-  }
-
-  function handleBeforeUnload(event) {
-    if (!hasUnsavedDemoForm()) return undefined;
-    event.preventDefault();
-    event.returnValue = '';
-    return '';
   }
 
   async function withButtonLoading(button, fn) {
@@ -1058,7 +996,7 @@
       '#reports': '▧',
       '#admin': '⚙'
     };
-    return `<a href="${hash}" class="top-nav-link ${active ? 'active' : ''}" title="${escapeAttr(label)}" ${active ? 'aria-current="page"' : ''}><span aria-hidden="true">${escapeHTML(icons[hash] || '')}</span>${escapeHTML(label)}</a>`;
+    return `<a href="${hash}" class="top-nav-link ${active ? 'active' : ''}" title="${escapeAttr(label)}"><span>${escapeHTML(icons[hash] || '')}</span>${escapeHTML(label)}</a>`;
   }
 
 
@@ -1610,7 +1548,7 @@
   function renderDashboard() {
     const start = State.dashboardRange.start;
     const end = State.dashboardRange.end;
-    const rows = getDemoRows().filter((row) => demoRoundOverlapsRange(row, start, end));
+    const rows = getDemoRows().filter((row) => dateInRange(row.round.created_at?.slice(0, 10), start, end));
     const allRows = getDemoRows();
     const chartRows = allRows;
 
@@ -1625,11 +1563,11 @@
       .sort((a, b) => a.remainingDays - b.remainingDays);
 
     const latest = [...allRows]
-      .sort((a, b) => getTimeValue(b.round.updated_at || b.round.created_at) - getTimeValue(a.round.updated_at || a.round.created_at));
+      .sort((a, b) => new Date(b.round.created_at || 0) - new Date(a.round.created_at || 0));
 
     const customers = allRows
       .filter((row) => (row.statusSystemKey === 'customer' || row.effectiveStatus === STATUS.CUSTOMER))
-      .sort((a, b) => getTimeValue(b.round.updated_at || b.round.created_at) - getTimeValue(a.round.updated_at || a.round.created_at));
+      .sort((a, b) => new Date(b.round.updated_at || 0) - new Date(a.round.updated_at || 0));
 
     return `
       ${renderTopbar('แดชบอร์ด', '', `
@@ -1638,16 +1576,15 @@
       <section class="card dashboard-control-card">
         <div class="filters compact dashboard-controls">
           <div class="field">
-            <label>เดโมตั้งแต่</label>
-            <input class="input" type="date" data-dashboard-range="start" value="${escapeAttr(start)}" aria-label="กรองเดโมตั้งแต่วันที่">
+            <label>เริ่ม</label>
+            <input class="input" type="date" data-dashboard-range="start" value="${escapeAttr(start)}">
           </div>
           <div class="field">
-            <label>ถึงวันที่</label>
-            <input class="input" type="date" data-dashboard-range="end" value="${escapeAttr(end)}" aria-label="กรองเดโมถึงวันที่">
+            <label>สิ้นสุด</label>
+            <input class="input" type="date" data-dashboard-range="end" value="${escapeAttr(end)}">
           </div>
           <div class="dashboard-quick-row">
             ${userIsAdmin() ? '<button class="btn warning" data-action="run-reminder-check">สร้างคิวเตือน 3 วัน</button>' : ''}
-            ${start || end ? '<button class="btn ghost" data-action="dashboard-range-clear">ล้างช่วงวันที่</button>' : ''}
             ${compactStatCard('เดโมในช่วงที่เลือก', rows.length)}
             ${compactStatCard('ใกล้หมดอายุ 7 วัน', near7.length)}
           </div>
@@ -1657,7 +1594,7 @@
       <section class="card content-gap">
         <div class="section-title">
           <h2>สรุปตามสถานะ</h2>
-          <span class="muted small-text">อ้างอิงช่วงวันที่เดโมที่เลือก</span>
+          <span class="muted small-text">อ้างอิงช่วงวันที่ที่เลือก</span>
         </div>
         ${renderStatusSummaryCards(rows)}
       </section>
@@ -1794,7 +1731,6 @@
     const rows = getFilteredRows();
     const pageInfo = paginateRows(rows, State.demoPage, DEMO_LIST_PAGE_SIZE);
     State.demoPage = pageInfo.page;
-    const hasFilters = hasActiveDemoFilters();
 
     return `
       ${renderTopbar('รายการเดโม', '', `
@@ -1844,21 +1780,19 @@
             <input type="checkbox" data-filter="nearOnly" ${State.filters.nearOnly ? 'checked' : ''}>
             ใกล้หมดอายุ 7 วัน
           </label>
-          ${hasFilters ? '<button class="btn ghost" type="button" data-action="demo-filters-clear">ล้างตัวกรอง</button>' : ''}
         </div>
-        ${hasFilters ? renderActiveFilterSummary() : ''}
-        ${renderDemoTable(pageInfo.rows, hasFilters)}
+        ${renderDemoTable(pageInfo.rows)}
         ${renderPagination('demo', 'list', pageInfo.page, pageInfo.totalPages, rows.length)}
       </section>
     `;
   }
 
-  function renderDemoTable(rows, hasFilters = false) {
-    if (!rows.length) return `<div class="empty">${hasFilters ? 'ไม่พบรายการตามตัวกรอง' : 'ไม่พบรายการเดโม'}</div>`;
+  function renderDemoTable(rows) {
+    if (!rows.length) return '<div class="empty">ไม่พบรายการเดโม</div>';
 
     return `
-      <div class="table-wrap demo-list-table-wrap">
-        <table class="demo-list-table">
+      <div class="table-wrap">
+        <table>
           <thead>
             <tr>
               <th>ชื่อบริษัท</th>
@@ -1929,7 +1863,6 @@
     const pageInfo = paginateRows(rows, State.reportPage, REPORT_PAGE_SIZE);
     State.reportPage = pageInfo.page;
     const pageRows = pageInfo.rows;
-    const hasSearch = Boolean(State.reportSearch.trim());
 
     return `
       ${renderTopbar('รายงาน', '', `
@@ -1942,7 +1875,6 @@
         </div>
         <div class="report-toolbar-note">
           แสดง ${pageRows.length.toLocaleString('th-TH')} จาก ${rows.length.toLocaleString('th-TH')} บริษัท
-          ${hasSearch ? '<button class="btn small ghost" type="button" data-action="report-search-clear">ล้างการค้นหา</button>' : ''}
         </div>
       </section>
 
@@ -2308,7 +2240,8 @@
         <form data-action="activity-add" data-company-id="${row.company.id}" data-round-id="${row.round.id}" class="log-form">
           <div class="field">
             <label>ข้อความบันทึก <span class="required">*</span></label>
-            <input class="input" name="message" placeholder="บันทึกความคืบหน้าของบริษัทนี้" required>
+            <textarea class="textarea activity-message-input" name="message" rows="4" placeholder="บันทึกความคืบหน้าของบริษัทนี้ กด Enter เพื่อขึ้นบรรทัดใหม่" required></textarea>
+            <p class="muted small-text">กด Enter เพื่อขึ้นบรรทัดใหม่ และกดปุ่มเพิ่มบันทึกเพื่อบันทึกเท่านั้น</p>
           </div>
           <button class="btn primary" type="submit">เพิ่มบันทึก</button>
         </form>
@@ -2347,6 +2280,7 @@
         ${logs.map((log) => {
           const author = findProfile(log.created_by);
           const canEdit = canModifyLog(log, latestId);
+          const disabledHint = 'แก้ไข/ลบได้เฉพาะบันทึกล่าสุดของบริษัทเท่านั้น';
           return `
             <div class="timeline-item">
               <div class="timeline-date">${formatDateTime(log.created_at)}</div>
@@ -2356,12 +2290,10 @@
                     ${renderProfileAvatar(author, 'profile-avatar timeline-avatar')}
                     <span class="muted small-text">โดย ${escapeHTML(displayName(author))}</span>
                   </span>
-                  ${canEdit ? `
-                    <div class="actions">
-                      <button class="btn small ghost" data-action="log-edit" data-id="${log.id}">แก้ไข</button>
-                      <button class="btn small danger" data-action="log-delete" data-id="${log.id}">ลบ</button>
-                    </div>
-                  ` : ''}
+                  <div class="actions">
+                    <button class="btn small ghost" type="button" data-action="log-edit" data-id="${log.id}" ${canEdit ? '' : `disabled title="${disabledHint}" aria-label="${disabledHint}"`}>แก้ไข</button>
+                    <button class="btn small danger" type="button" data-action="log-delete" data-id="${log.id}" ${canEdit ? '' : `disabled title="${disabledHint}" aria-label="${disabledHint}"`}>ลบ</button>
+                  </div>
                 </div>
                 <p>${escapeHTML(log.message)}</p>
               </div>
@@ -2871,7 +2803,6 @@
     }
 
     clearDemoDraft(form.dataset.draftKey || '');
-    State.demoFormDirty = false;
     await loadAllData();
     toast('บันทึกเดโมสำเร็จ', 'success');
     location.hash = `#demos/${roundId}`;
@@ -3053,23 +2984,54 @@
     if (!log) return;
 
     if (!canModifyLog(log)) {
-      toast('แก้ไขได้เฉพาะบันทึกล่าสุดเท่านั้น', 'error');
+      toast('แก้ไขได้เฉพาะบันทึกล่าสุดของบริษัทเท่านั้น', 'error');
       return;
     }
 
-    const message = window.prompt('แก้ไขข้อความบันทึก', log.message);
-    if (message === null) return;
-    if (!message.trim()) {
-      toast('ข้อความบันทึกห้ามว่าง', 'warning');
-      return;
+    showModal(`
+      <header>
+        <div>
+          <strong>แก้ไขบันทึก</strong>
+          <div class="muted small-text">แก้ไขได้เฉพาะบันทึกล่าสุดของบริษัท</div>
+        </div>
+        <button class="btn small ghost" type="button" data-action="modal-close">ปิด</button>
+      </header>
+      <form data-action="log-edit-save">
+        <main class="grid">
+          <input type="hidden" name="id" value="${escapeAttr(log.id)}">
+          <div class="field">
+            <label>ข้อความบันทึก <span class="required">*</span></label>
+            <textarea class="textarea activity-message-input" name="message" rows="6" required>${escapeHTML(log.message)}</textarea>
+            <p class="muted small-text">กด Enter เพื่อขึ้นบรรทัดใหม่</p>
+          </div>
+        </main>
+        <footer>
+          <button class="btn ghost" type="button" data-action="modal-close">ยกเลิก</button>
+          <button class="btn primary" type="submit">บันทึกการแก้ไข</button>
+        </footer>
+      </form>
+    `);
+  }
+
+  async function saveLogEdit(form) {
+    const id = form.id.value;
+    const log = State.activityLogs.find((item) => item.id === id);
+    if (!log) throw new Error('ไม่พบบันทึกที่ต้องการแก้ไข');
+
+    if (!canModifyLog(log)) {
+      throw new Error('แก้ไขได้เฉพาะบันทึกล่าสุดของบริษัทเท่านั้น');
     }
+
+    const message = form.message.value.trim();
+    if (!message) throw new Error('ข้อความบันทึกห้ามว่าง');
 
     const { error } = await State.sb.from('activity_logs').update({
-      message: message.trim(),
+      message,
       updated_at: new Date().toISOString()
     }).eq('id', id);
     if (error) throw error;
 
+    closeModal();
     await loadAllData();
     render();
     toast('แก้ไขบันทึกแล้ว', 'success');
@@ -3080,7 +3042,7 @@
     if (!log) return;
 
     if (!canModifyLog(log)) {
-      toast('ลบได้เฉพาะบันทึกล่าสุดเท่านั้น', 'error');
+      toast('ลบได้เฉพาะบันทึกล่าสุดของบริษัทเท่านั้น', 'error');
       return;
     }
 
@@ -3774,92 +3736,17 @@ async function saveModule(form) {
   }
 
   function compareRoundLatest(a, b) {
+    const dateA = new Date(a.round.created_at || a.round.updated_at || a.round.start_date || 0).getTime();
+    const dateB = new Date(b.round.created_at || b.round.updated_at || b.round.start_date || 0).getTime();
+    if (dateA !== dateB) return dateB - dateA;
+
     const renewalA = Number(a.round.renewal_no || 0);
     const renewalB = Number(b.round.renewal_no || 0);
     if (renewalA !== renewalB) return renewalB - renewalA;
 
-    const endA = getDateOnlyTime(a.round.end_date);
-    const endB = getDateOnlyTime(b.round.end_date);
-    if (endA !== endB) return endB - endA;
-
-    const startA = getDateOnlyTime(a.round.start_date);
-    const startB = getDateOnlyTime(b.round.start_date);
-    if (startA !== startB) return startB - startA;
-
-    const createdA = getTimeValue(a.round.created_at || a.round.updated_at);
-    const createdB = getTimeValue(b.round.created_at || b.round.updated_at);
-    return createdB - createdA;
-  }
-
-  function getTimeValue(value) {
-    if (!value) return 0;
-    const time = new Date(value).getTime();
-    return Number.isNaN(time) ? 0 : time;
-  }
-
-  function getDateOnlyTime(value) {
-    if (!value) return 0;
-    const time = new Date(`${String(value).slice(0, 10)}T00:00:00`).getTime();
-    return Number.isNaN(time) ? 0 : time;
-  }
-
-  function demoRoundOverlapsRange(row, start, end) {
-    if (!start && !end) return true;
-    const startDate = row.round.start_date || row.round.created_at?.slice(0, 10);
-    const endDate = row.round.end_date || startDate;
-    if (start && endDate < start) return false;
-    if (end && startDate > end) return false;
-    return true;
-  }
-
-  function hasActiveDemoFilters() {
-    return Boolean(
-      State.filters.search ||
-      State.filters.status ||
-      State.filters.responsible ||
-      State.filters.module ||
-      State.filters.nearOnly ||
-      (State.filters.sort && State.filters.sort !== 'updated_desc')
-    );
-  }
-
-  function resetDemoFilters() {
-    State.filters = {
-      search: '',
-      status: '',
-      responsible: '',
-      module: '',
-      sort: 'updated_desc',
-      nearOnly: false
-    };
-    State.demoPage = 1;
-  }
-
-  function renderActiveFilterSummary() {
-    const chips = [];
-    if (State.filters.search) chips.push(`ค้นหา: ${State.filters.search}`);
-    if (State.filters.status) {
-      const status = getStatusMetaById(State.filters.status);
-      chips.push(`สถานะ: ${status?.name || State.filters.status}`);
-    }
-    if (State.filters.responsible) {
-      const person = findResponsiblePerson(State.filters.responsible);
-      chips.push(`ผู้รับผิดชอบ: ${displayName(person)}`);
-    }
-    if (State.filters.module) {
-      const module = State.modules.find((item) => item.id === State.filters.module);
-      chips.push(`โมดูล: ${module?.name || State.filters.module}`);
-    }
-    if (State.filters.nearOnly) chips.push('ใกล้หมดอายุ 7 วัน');
-    if (State.filters.sort && State.filters.sort !== 'updated_desc') chips.push('จัดเรียงถูกปรับแล้ว');
-
-    if (!chips.length) return '';
-    return `
-      <div class="active-filter-bar">
-        <span>ตัวกรองที่ใช้</span>
-        ${chips.map((chip) => `<em>${escapeHTML(chip)}</em>`).join('')}
-      </div>
-    `;
+    const endA = new Date(`${a.round.end_date || '1970-01-01'}T00:00:00`).getTime();
+    const endB = new Date(`${b.round.end_date || '1970-01-01'}T00:00:00`).getTime();
+    return endB - endA;
   }
 
   function getFilteredRows() {
@@ -4385,8 +4272,6 @@ async function saveModule(form) {
     const root = $('#toast-root');
     const div = document.createElement('div');
     div.className = `toast ${type}`;
-    div.setAttribute('role', type === 'error' ? 'alert' : 'status');
-    div.setAttribute('aria-live', type === 'error' ? 'assertive' : 'polite');
     div.textContent = message;
     root.appendChild(div);
     window.setTimeout(() => div.remove(), 4600);
@@ -4505,10 +4390,10 @@ async function saveModule(form) {
 
   function canModifyLog(log, latestId = null) {
     const companyLogs = State.activityLogs
-      .filter((item) => item.company_id === log.company_id)
+      .filter((item) => item.company_id === log.company_id && isManualLog(item))
       .sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
     const actualLatestId = latestId || companyLogs[0]?.id;
-    if (log.id !== actualLatestId) return false;
+    if (!actualLatestId || log.id !== actualLatestId) return false;
     return userIsAdmin() || log.created_by === State.profile?.id;
   }
 
