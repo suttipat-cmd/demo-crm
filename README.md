@@ -4,8 +4,8 @@ DEMO CRM สำหรับทีม Customer Support ใช้จัดกา�
 
 ## Version
 
-- Current: `v1.4.4`
-- Type: Activity Log RPC/RLS Hotfix + Company Copy UX
+- Current: `v1.4.5`
+- Type: Demo Form Cleanup + Calendar View
 - Frontend: Static HTML/CSS/JS on GitHub Pages
 - Backend: Supabase Auth + Database
 - Email: Google Apps Script
@@ -28,6 +28,18 @@ supabase/
   014_v1_4_4_activity_log_rpc_rls.sql
   reset_transaction_data_keep_masters.sql
 ```
+
+## v1.4.5 Update
+
+- หน้า `สร้างเดโม` / `แก้ไขเดโม` เอาส่วน `บันทึกความคืบหน้า` ออกจากฟอร์ม
+- การบันทึก demo จะไม่สร้าง `activity_logs` อีกต่อไป ทั้ง manual log และ system log จากฟอร์มนี้
+- การเพิ่มบันทึกความคืบหน้าให้ทำจากหน้ารายละเอียดเดโม / ส่วน activity log เท่านั้น
+- เพิ่มมุมมอง `ปฏิทิน` ในหน้า `รายการเดโม`
+  - แสดงรายการตามวันที่หมดอายุของ demo (`demo_rounds.end_date`)
+  - ใช้สีรายการตามสถานะ demo จาก status master
+  - กดรายการในปฏิทินเพื่อเปิดรายละเอียด demo
+- ปรับ logic เลือกรอบล่าสุดให้ใช้ `renewal_no → end_date → start_date → created_at` เพื่อลดความเสี่ยงข้อมูล migrate เรียงผิด
+- ไม่ต้องรัน SQL เพิ่มสำหรับ v1.4.5
 
 ## v1.4.4 Update
 
@@ -210,7 +222,7 @@ supabase/reset_transaction_data_keep_masters.sql
 
 ```bash
 git add .
-git commit -m "Release v1.4.3 activity log RLS hotfix"
+git commit -m "Release v1.4.5 demo calendar view"
 git push
 ```
 
@@ -220,6 +232,18 @@ git push
 Mac: Cmd + Shift + R
 Windows: Ctrl + F5
 ```
+
+## Smoke Test เพิ่มเติมสำหรับ v1.4.5
+
+- เปิดหน้า `สร้างเดโม` แล้วต้องไม่เห็น section `บันทึกความคืบหน้า`
+- เปิดหน้า `แก้ไขเดโม` แล้วต้องไม่เห็น section `บันทึกความคืบหน้า`
+- บันทึก demo ใหม่แล้วตรวจว่าไม่มี activity log ใหม่ถูกสร้างจาก form save โดยอัตโนมัติ
+- เปิดหน้ารายละเอียด demo แล้วเพิ่ม `บันทึกความคืบหน้า` จากส่วน activity log ได้ตามปกติ
+- เปิดหน้า `รายการเดโม` แล้วสลับมุมมอง `ตาราง` / `ปฏิทิน` ได้
+- ในมุมมอง `ปฏิทิน` ต้องเห็นรายการตาม `วันที่สิ้นสุด` และสีตามสถานะ
+- กดรายการในปฏิทินแล้วต้องไปหน้ารายละเอียด demo ถูกต้อง
+- กด `ก่อนหน้า` / `เดือนนี้` / `ถัดไป` แล้วเดือนเปลี่ยนถูกต้อง
+- ตรวจว่า filter สถานะ/ผู้รับผิดชอบ/โมดูล/ค้นหา มีผลกับปฏิทินเหมือนตาราง
 
 ## Smoke Test หลัง Deploy
 

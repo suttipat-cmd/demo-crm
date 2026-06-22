@@ -5,7 +5,7 @@
 (() => {
   'use strict';
 
-  const APP_VERSION = '1.4.4';
+  const APP_VERSION = '1.4.5';
   const APP_CONFIG = {
     SUPABASE_URL: 'https://hacmassihdqlgkmwoivs.supabase.co',
     SUPABASE_ANON_KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhhY21hc3NpaGRxbGdrbXdvaXZzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkxMjk1ODgsImV4cCI6MjA5NDcwNTU4OH0.TgkJCHaRndMDZY2SANXCjFLdMkHUd_bxJOb0K9Znpa8',
@@ -80,6 +80,8 @@
       customers: 1
     },
     demoPage: 1,
+    demoView: 'table',
+    demoCalendarMonth: currentMonthKey(),
     reportPage: 1,
     reportSearch: '',
     adminTab: 'users',
@@ -427,6 +429,15 @@
         break;
       case 'copy':
         await copyText(target.dataset.copy || '');
+        break;
+      case 'demo-view':
+        State.demoView = target.dataset.view === 'calendar' ? 'calendar' : 'table';
+        State.demoPage = 1;
+        render();
+        break;
+      case 'calendar-month':
+        State.demoCalendarMonth = target.dataset.month || currentMonthKey();
+        render();
         break;
       case 'demo-close':
         await withButtonLoading(target, async () => {
@@ -1729,8 +1740,9 @@
 
   function renderDemoList() {
     const rows = getFilteredRows();
-    const pageInfo = paginateRows(rows, State.demoPage, DEMO_LIST_PAGE_SIZE);
-    State.demoPage = pageInfo.page;
+    const isCalendarView = State.demoView === 'calendar';
+    const pageInfo = isCalendarView ? null : paginateRows(rows, State.demoPage, DEMO_LIST_PAGE_SIZE);
+    if (pageInfo) State.demoPage = pageInfo.page;
 
     return `
       ${renderTopbar('รายการเดโม', '', `
@@ -1738,6 +1750,13 @@
         <button class="btn secondary" data-action="report-export">ดึงรายงาน</button>
       `)}
       <section class="card">
+        <div class="demo-list-toolbar">
+          <div>
+            <h2>${isCalendarView ? 'ปฏิทินวันหมดอายุ Demo' : 'ตารางรายการเดโม'}</h2>
+            <p>${isCalendarView ? 'แสดงตามวันที่สิ้นสุด Demo และใช้สีตามสถานะ' : 'ค้นหา กรอง และจัดการรายการเดโม'}</p>
+          </div>
+          ${renderDemoViewToggle()}
+        </div>
         <div class="filters">
           <div class="field search-field">
             <label>ค้นหา</label>
@@ -1781,13 +1800,97 @@
             ใกล้หมดอายุ 7 วัน
           </label>
         </div>
-        ${renderDemoTable(pageInfo.rows)}
-        ${renderPagination('demo', 'list', pageInfo.page, pageInfo.totalPages, rows.length)}
+        ${isCalendarView
+          ? renderDemoCalendar(rows)
+          : `${renderDemoTable(pageInfo.rows)}${renderPagination('demo', 'list', pageInfo.page, pageInfo.totalPages, rows.length)}`}
       </section>
     `;
   }
 
-  function renderDemoTable(rows) {
+  function renderDemoViewToggle() {
+    return `
+      <div class="view-toggle" aria-label="สลับรูปแบบรายการเดโม">
+        <button class="btn small ${State.demoView === 'table' ? 'primary' : 'ghost'}" type="button" data-action="demo-view" data-view="table" aria-pressed="${State.demoView === 'table'}">ตาราง</button>
+        <button class="btn small ${State.demoView === 'calendar' ? 'primary' : 'ghost'}" type="button" data-action="demo-view" data-view="calendar" aria-pressed="${State.demoView === 'calendar'}">ปฏิทิน</button>
+      </div>
+    `;
+  }
+
+  function renderDemoCalendar(rows) {
+    const monthKey = State.demoCalendarMonth || currentMonthKey();
+    const [yearText, monthText] = monthKey.split('-');
+    const year = Number(yearText);
+    const monthIndex = Number(monthText) - 1;
+    const firstDay = new Date(year, monthIndex, 1);
+    const firstWeekday = firstDay.getDay();
+    const daysInMonth = new Date(year, monthIndex + 1, 0).getDate();
+    const totalCells = Math.ceil((firstWeekday + daysInMonth) / 7) * 7;
+    const today = todayISO();
+    const monthRows = rows.filter((row) => row.round.end_date && row.round.end_date.slice(0, 7) === monthKey);
+    const rowsByDate = monthRows.reduce((map, row) => {
+      const key = row.round.end_date;
+      if (!map.has(key)) map.set(key, []);
+      map.get(key).push(row);
+      return map;
+    }, new Map());
+
+    const weekdays = ['อา', 'จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส'];
+    const cells = Array.from({ length: totalCells }, (_item, index) => {
+      const dayNumber = index - firstWeekday + 1;
+      const inMonth = dayNumber >= 1 && dayNumber <= daysInMonth;
+      const dateKey = inMonth ? `${monthKey}-${String(dayNumber).padStart(2, '0')}` : '';
+      const events = rowsByDate.get(dateKey) || [];
+
+      return `
+        <div class="calendar-day ${inMonth ? '' : 'outside'} ${dateKey === today ? 'today' : ''}">
+          <div class="calendar-day-number">${inMonth ? dayNumber.toLocaleString('th-TH') : ''}</div>
+          <div class="calendar-events">
+            ${events.map((row) => renderCalendarEvent(row)).join('')}
+          </div>
+        </div>
+      `;
+    });
+
+    return `
+      <div class="calendar-shell">
+        <div class="calendar-header">
+          <div>
+            <h3>${escapeHTML(formatCalendarMonth(monthKey))}</h3>
+            <p>${monthRows.length.toLocaleString('th-TH')} รายการหมดอายุในเดือนนี้</p>
+          </div>
+          <div class="calendar-actions">
+            <button class="btn small ghost" type="button" data-action="calendar-month" data-month="${escapeAttr(shiftMonthKey(monthKey, -1))}">ก่อนหน้า</button>
+            <button class="btn small ghost" type="button" data-action="calendar-month" data-month="${escapeAttr(currentMonthKey())}">เดือนนี้</button>
+            <button class="btn small ghost" type="button" data-action="calendar-month" data-month="${escapeAttr(shiftMonthKey(monthKey, 1))}">ถัดไป</button>
+          </div>
+        </div>
+        <div class="calendar-weekdays">
+          ${weekdays.map((day) => `<span>${day}</span>`).join('')}
+        </div>
+        <div class="calendar-grid">
+          ${cells.join('')}
+        </div>
+        ${monthRows.length ? '' : '<div class="empty">ไม่มี Demo ที่หมดอายุในเดือนนี้ตามตัวกรองปัจจุบัน</div>'}
+      </div>
+    `;
+  }
+
+  function renderCalendarEvent(row) {
+    const statusMeta = getRoundStatusMeta(row.round);
+    const color = normalizeStatusColor(statusMeta?.color);
+    const title = `${row.company.company_name} · ${row.effectiveStatus} · หมดอายุ ${formatDate(row.round.end_date)}`;
+
+    return `
+      <a class="calendar-event" href="#demos/${row.round.id}" title="${escapeAttr(title)}" style="--status-color:${escapeAttr(color)}">
+        <span class="calendar-event-dot" aria-hidden="true"></span>
+        <span class="calendar-event-main">${escapeHTML(row.company.company_name)}</span>
+        <small>${escapeHTML(row.effectiveStatus)}</small>
+      </a>
+    `;
+  }
+
+
+function renderDemoTable(rows) {
     if (!rows.length) return '<div class="empty">ไม่พบรายการเดโม</div>';
 
     return `
@@ -2022,8 +2125,7 @@
       end_date: endDate,
       renewal_no: renewalNo,
       modules: source?.modules.map((module) => module.id) || [],
-      accounts: source?.accounts.length ? source.accounts : [{ login_email: '', password: '', note: '' }],
-      activity_message: ''
+      accounts: source?.accounts.length ? source.accounts : [{ login_email: '', password: '', note: '' }]
     };
 
     const values = {
@@ -2122,15 +2224,6 @@
             ${accounts.map((account) => renderAccountRow(account)).join('')}
           </div>
         </section>
-
-        <section class="panel form-section">
-          <div class="section-title"><h2>บันทึกความคืบหน้า</h2></div>
-          <div class="field">
-            <label>ข้อความบันทึก</label>
-            <textarea class="textarea" name="activity_message" placeholder="เช่น โทรคุยแล้ว ลูกค้าขอต่ออายุอีก 7 วัน">${escapeHTML(values.activity_message || '')}</textarea>
-          </div>
-        </section>
-
         <div class="actions form-actions">
           <button class="btn primary" type="submit">บันทึก</button>
           <a class="btn ghost" href="${editRow ? `#demos/${editId}` : '#demos'}">ยกเลิก</a>
@@ -2786,22 +2879,8 @@
     await replaceRoundModules(roundId, selectedModules);
     await replaceAccounts(roundId, accounts);
 
-    const message = form.activity_message.value.trim();
-    if (message) {
-      await insertActivityLog({
-        company_id: companyId,
-        demo_round_id: roundId,
-        message
-      });
-    } else if (!editId) {
-      await insertActivityLog({
-        company_id: companyId,
-        demo_round_id: roundId,
-        log_type: renewFromId ? 'ต่ออายุ demo' : DEFAULT_LOG_TYPE,
-        source: 'system',
-        message: renewFromId ? 'สร้างรอบเดโมใหม่จากการต่ออายุ' : 'สร้างรายการเดโมใหม่'
-      });
-    }
+    // v1.4.5: Demo create/edit form must not create activity logs.
+    // Users add progress notes explicitly from the demo detail activity section.
 
     if (isFinalStatusMeta(statusMeta)) {
       await cleanupClosedRoundLogs(roundId);
@@ -3741,17 +3820,21 @@ async function saveModule(form) {
   }
 
   function compareRoundLatest(a, b) {
-    const dateA = new Date(a.round.created_at || a.round.updated_at || a.round.start_date || 0).getTime();
-    const dateB = new Date(b.round.created_at || b.round.updated_at || b.round.start_date || 0).getTime();
-    if (dateA !== dateB) return dateB - dateA;
-
     const renewalA = Number(a.round.renewal_no || 0);
     const renewalB = Number(b.round.renewal_no || 0);
     if (renewalA !== renewalB) return renewalB - renewalA;
 
     const endA = new Date(`${a.round.end_date || '1970-01-01'}T00:00:00`).getTime();
     const endB = new Date(`${b.round.end_date || '1970-01-01'}T00:00:00`).getTime();
-    return endB - endA;
+    if (endA !== endB) return endB - endA;
+
+    const startA = new Date(`${a.round.start_date || '1970-01-01'}T00:00:00`).getTime();
+    const startB = new Date(`${b.round.start_date || '1970-01-01'}T00:00:00`).getTime();
+    if (startA !== startB) return startB - startA;
+
+    const dateA = new Date(a.round.created_at || a.round.updated_at || 0).getTime();
+    const dateB = new Date(b.round.created_at || b.round.updated_at || 0).getTime();
+    return dateB - dateA;
   }
 
   function getFilteredRows() {
@@ -4148,8 +4231,7 @@ async function saveModule(form) {
       end_date: form.end_date?.value || addDaysISO(todayISO(), 14),
       renewal_no: Number(form.renewal_no?.value || 0),
       modules: $$('input[name="modules"]:checked', form).map((input) => input.value),
-      accounts: collectDemoAccounts(form, { includeEmpty: true }),
-      activity_message: form.activity_message?.value || ''
+      accounts: collectDemoAccounts(form, { includeEmpty: true })
     };
   }
 
@@ -4429,6 +4511,22 @@ async function saveModule(form) {
     const s = new Date(`${start}T00:00:00`);
     const e = new Date(`${end}T00:00:00`);
     return Math.floor((e - s) / 86400000);
+  }
+
+  function currentMonthKey() {
+    return todayISO().slice(0, 7);
+  }
+
+  function shiftMonthKey(monthKey, delta) {
+    const [yearText, monthText] = String(monthKey || currentMonthKey()).split('-');
+    const date = new Date(Number(yearText), Number(monthText) - 1 + Number(delta || 0), 1);
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+  }
+
+  function formatCalendarMonth(monthKey) {
+    const [yearText, monthText] = String(monthKey || currentMonthKey()).split('-');
+    const date = new Date(Number(yearText), Number(monthText) - 1, 1);
+    return new Intl.DateTimeFormat('th-TH', { month: 'long', year: 'numeric' }).format(date);
   }
 
   function todayISO() {
