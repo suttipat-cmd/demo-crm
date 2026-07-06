@@ -4,8 +4,8 @@ DEMO CRM สำหรับทีม Customer Support ใช้จัดกา�
 
 ## Version
 
-- Current: `v1.4.5`
-- Type: Demo Form Cleanup + Calendar View
+- Current: `v1.4.6`
+- Type: AG Grid Demo Table View
 - Frontend: Static HTML/CSS/JS on GitHub Pages
 - Backend: Supabase Auth + Database
 - Email: Google Apps Script
@@ -28,6 +28,19 @@ supabase/
   014_v1_4_4_activity_log_rpc_rls.sql
   reset_transaction_data_keep_masters.sql
 ```
+
+## v1.4.6 Update
+
+- เพิ่ม AG Grid Community ในหน้า `รายการเดโม` เฉพาะมุมมอง `ตาราง`
+  - ใช้ CDN แบบ pinned version `ag-grid-community@36.0.0`
+  - เปิด sorting, column filter, column resize, pinned columns และ pagination ของ AG Grid
+  - คง filter เดิมของระบบ: ค้นหา, สถานะ, ผู้รับผิดชอบ, โมดูล, จัดเรียง และใกล้หมดอายุ 7 วัน
+  - คง action เดิมครบ: ดู, แก้ไข, ต่ออายุ, ปิด, อีเมล, ลบ, คัดลอกชื่อบริษัท, คัดลอกอีเมล และคัดลอกรหัสผ่าน
+- คงมุมมอง `ปฏิทิน` เดิมในหน้า `รายการเดโม`
+- เพิ่ม fallback table เดิม หากโหลด AG Grid CDN ไม่สำเร็จ
+- ไม่เปิด inline edit ใน grid รอบนี้ เพื่อลดความเสี่ยง bypass validation/business logic
+- ไม่เปลี่ยน database schema, Supabase RLS, RPC หรือ SQL migration
+- ไม่ต้องรัน SQL เพิ่มสำหรับ v1.4.6
 
 ## v1.4.5 Update
 
@@ -140,6 +153,8 @@ Rollback note:
 
 ## SQL Required
 
+v1.4.6 ไม่ต้องรัน SQL เพิ่ม หากฐานข้อมูลเคยอยู่บน schema v1.4.5 อยู่แล้ว
+
 v1.4.3 ต้องรัน SQL เพิ่ม 1 ไฟล์หลัง deploy โค้ด หรือก่อน deploy ก็ได้:
 
 ```txt
@@ -222,7 +237,7 @@ supabase/reset_transaction_data_keep_masters.sql
 
 ```bash
 git add .
-git commit -m "Release v1.4.5 demo calendar view"
+git commit -m "Release v1.4.6 AG Grid demo table"
 git push
 ```
 
@@ -232,6 +247,19 @@ git push
 Mac: Cmd + Shift + R
 Windows: Ctrl + F5
 ```
+
+## Smoke Test เพิ่มเติมสำหรับ v1.4.6
+
+- เปิดหน้า `รายการเดโม` แล้วมุมมอง `ตาราง` ต้องแสดงเป็น AG Grid
+- ตรวจว่า filter เดิมของระบบยังทำงาน: ค้นหา, สถานะ, ผู้รับผิดชอบ, โมดูล, จัดเรียง, ใกล้หมดอายุ 7 วัน
+- คลิกหัวคอลัมน์ใน AG Grid แล้ว sort ได้
+- เปิด column filter ใน AG Grid แล้วกรองข้อมูลได้
+- resize column และเลื่อนแนวนอนได้
+- pagination ของ AG Grid เปลี่ยนหน้าและเปลี่ยนจำนวนแถวต่อหน้าได้
+- ปุ่ม `คัดลอกชื่อบริษัท`, `คัดลอกอีเมล`, `คัดลอกรหัสผ่าน` ยังทำงาน
+- ปุ่ม `ดู`, `แก้ไข`, `ต่ออายุ`, `ปิด`, `อีเมล`, `ลบ` ยังทำงานตาม permission เดิม
+- สลับไปมุมมอง `ปฏิทิน` แล้วต้องแสดง calendar เดิมและกดรายการได้
+- ปิด internet/CDN ชั่วคราวหรือ block AG Grid เพื่อตรวจ fallback table สำรอง หากจำเป็น
 
 ## Smoke Test เพิ่มเติมสำหรับ v1.4.5
 
@@ -294,6 +322,8 @@ Windows: Ctrl + F5
 - การลบสถานะถูกกันทั้ง frontend และ RLS policy ถ้าสถานะถูกใช้งานอยู่
 
 ## Known External Setup
+
+- AG Grid Community CDN: `https://cdn.jsdelivr.net/npm/ag-grid-community@36.0.0/dist/ag-grid-community.min.js`
 
 - สร้าง/จัดการ Auth User ผ่าน Supabase Dashboard
 - ตั้ง Google Apps Script Web App URL ที่ `ตั้งค่าระบบ → ตั้งค่าอีเมล`

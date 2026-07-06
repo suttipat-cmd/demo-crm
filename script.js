@@ -1,11 +1,11 @@
-/* DEMO CRM v1.4.4
+/* DEMO CRM v1.4.6
    Static SPA for GitHub Pages + Supabase.
    Security rule: never place service_role key, database password, or private token in this file.
 */
 (() => {
   'use strict';
 
-  const APP_VERSION = '1.4.5';
+  const APP_VERSION = '1.4.6';
   const APP_CONFIG = {
     SUPABASE_URL: 'https://hacmassihdqlgkmwoivs.supabase.co',
     SUPABASE_ANON_KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhhY21hc3NpaGRxbGdrbXdvaXZzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkxMjk1ODgsImV4cCI6MjA5NDcwNTU4OH0.TgkJCHaRndMDZY2SANXCjFLdMkHUd_bxJOb0K9Znpa8',
@@ -82,6 +82,8 @@
     demoPage: 1,
     demoView: 'table',
     demoCalendarMonth: currentMonthKey(),
+    demoGridRows: [],
+    demoGridApi: null,
     reportPage: 1,
     reportSearch: '',
     adminTab: 'users',
@@ -831,6 +833,8 @@
     const app = $('#app');
     if (!app) return;
 
+    destroyDemoGrid();
+
     if (!State.authReady) {
       app.className = 'app-loading';
       app.innerHTML = renderBootLoading(State.loadingMessage || 'กำลังเริ่มระบบ...');
@@ -846,6 +850,7 @@
     const route = State.currentRoute || '#dashboard';
     app.className = '';
     app.innerHTML = renderShell(route);
+    hydrateDemoGrid();
   }
 
   function renderBootLoading(message) {
@@ -1741,8 +1746,9 @@
   function renderDemoList() {
     const rows = getFilteredRows();
     const isCalendarView = State.demoView === 'calendar';
-    const pageInfo = isCalendarView ? null : paginateRows(rows, State.demoPage, DEMO_LIST_PAGE_SIZE);
-    if (pageInfo) State.demoPage = pageInfo.page;
+    if (isCalendarView) {
+      State.demoGridRows = [];
+    }
 
     return `
       ${renderTopbar('รายการเดโม', '', `
@@ -1802,7 +1808,7 @@
         </div>
         ${isCalendarView
           ? renderDemoCalendar(rows)
-          : `${renderDemoTable(pageInfo.rows)}${renderPagination('demo', 'list', pageInfo.page, pageInfo.totalPages, rows.length)}`}
+          : renderDemoTable(rows)}
       </section>
     `;
   }
@@ -1890,7 +1896,254 @@
   }
 
 
-function renderDemoTable(rows) {
+
+  function renderDemoTable(rows) {
+    State.demoGridRows = rows;
+    if (!rows.length) return '<div class="empty">ไม่พบรายการเดโม</div>';
+
+    if (!window.agGrid || typeof window.agGrid.createGrid !== 'function') {
+      return `
+        <div class="config-warning">
+          โหลด AG Grid ไม่สำเร็จ ระบบจะแสดงตารางสำรองแทน กรุณาตรวจสอบ internet/CDN แล้ว hard refresh อีกครั้ง
+        </div>
+        ${renderLegacyDemoTable(rows)}
+      `;
+    }
+
+    return `
+      <div class="ag-grid-toolbar">
+        <div>
+          <strong>${rows.length.toLocaleString('th-TH')} รายการ</strong>
+          <span class="muted small-text">ใช้ AG Grid Community: คลิกหัวคอลัมน์เพื่อเรียงลำดับ, เปิด filter ที่หัวคอลัมน์ และเลื่อนแนวนอนได้</span>
+        </div>
+      </div>
+      <div id="demo-ag-grid" class="demo-ag-grid" data-ag-grid="demo-list" aria-label="ตารางรายการเดโม"></div>
+    `;
+  }
+
+  function hydrateDemoGrid() {
+    const gridEl = $('#demo-ag-grid');
+    if (!gridEl) {
+      State.demoGridRows = [];
+      return;
+    }
+
+    if (!window.agGrid || typeof window.agGrid.createGrid !== 'function') return;
+
+    const gridOptions = buildDemoGridOptions(State.demoGridRows || []);
+    State.demoGridApi = window.agGrid.createGrid(gridEl, gridOptions);
+  }
+
+  function destroyDemoGrid() {
+    if (!State.demoGridApi || typeof State.demoGridApi.destroy !== 'function') return;
+    try {
+      State.demoGridApi.destroy();
+    } catch (error) {
+      console.warn('Destroy AG Grid failed', error);
+    } finally {
+      State.demoGridApi = null;
+    }
+  }
+
+  function buildDemoGridOptions(rows) {
+    return {
+      rowData: rows.map(mapDemoGridRow),
+      columnDefs: getDemoGridColumnDefs(),
+      defaultColDef: {
+        sortable: true,
+        filter: true,
+        resizable: true,
+        minWidth: 120,
+        wrapHeaderText: true,
+        autoHeaderHeight: true
+      },
+      pagination: true,
+      paginationPageSize: DEMO_LIST_PAGE_SIZE,
+      paginationPageSizeSelector: [10, 20, 50, 100],
+      domLayout: 'normal',
+      animateRows: false,
+      rowHeight: 66,
+      headerHeight: 46,
+      suppressCellFocus: true,
+      suppressDragLeaveHidesColumns: true,
+      ensureDomOrder: true,
+      localeText: getAgGridThaiLocaleText(),
+      getRowId: (params) => String(params.data?.roundId || ''),
+      overlayNoRowsTemplate: '<span class="ag-grid-empty">ไม่พบรายการเดโม</span>'
+    };
+  }
+
+  function getDemoGridColumnDefs() {
+    return [
+      {
+        headerName: 'ชื่อบริษัท',
+        field: 'companyName',
+        pinned: 'left',
+        minWidth: 240,
+        filter: 'agTextColumnFilter',
+        cellRenderer: (params) => renderGridCompanyCell(params.data)
+      },
+      {
+        headerName: 'ผู้ติดต่อ',
+        field: 'contactName',
+        minWidth: 160,
+        filter: 'agTextColumnFilter'
+      },
+      {
+        headerName: 'อีเมลผู้ติดต่อ',
+        field: 'contactEmailsText',
+        minWidth: 260,
+        filter: 'agTextColumnFilter',
+        cellRenderer: (params) => renderGridContactCell(params.data)
+      },
+      {
+        headerName: 'สถานะ',
+        field: 'status',
+        minWidth: 150,
+        filter: 'agTextColumnFilter',
+        cellRenderer: (params) => statusBadge(params.data?.status || '-')
+      },
+      {
+        headerName: 'ผู้รับผิดชอบ',
+        field: 'responsibleName',
+        minWidth: 170,
+        filter: 'agTextColumnFilter'
+      },
+      {
+        headerName: 'เริ่ม',
+        field: 'startDate',
+        minWidth: 130,
+        filter: 'agTextColumnFilter',
+        valueFormatter: (params) => formatDate(params.value)
+      },
+      {
+        headerName: 'สิ้นสุด',
+        field: 'endDate',
+        minWidth: 130,
+        filter: 'agTextColumnFilter',
+        valueFormatter: (params) => formatDate(params.value)
+      },
+      {
+        headerName: 'วันรอบนี้',
+        field: 'totalDays',
+        minWidth: 125,
+        filter: 'agNumberColumnFilter',
+        type: 'rightAligned'
+      },
+      {
+        headerName: 'วันคงเหลือ',
+        field: 'remainingDays',
+        minWidth: 155,
+        filter: 'agNumberColumnFilter',
+        type: 'rightAligned',
+        cellRenderer: (params) => escapeHTML(formatRemaining(Number(params.value || 0)))
+      },
+      {
+        headerName: 'วันสะสมทั้งหมด',
+        field: 'accumulatedDays',
+        minWidth: 155,
+        filter: 'agNumberColumnFilter',
+        type: 'rightAligned'
+      },
+      {
+        headerName: 'โมดูล',
+        field: 'modulesText',
+        minWidth: 230,
+        filter: 'agTextColumnFilter',
+        tooltipField: 'modulesText'
+      },
+      {
+        headerName: 'บันทึกล่าสุด',
+        field: 'latestLogMessage',
+        minWidth: 260,
+        filter: 'agTextColumnFilter',
+        tooltipField: 'latestLogMessage',
+        cellRenderer: (params) => `<span class="ag-cell-ellipsis">${escapeHTML(params.value || '-')}</span>`
+      },
+      {
+        headerName: 'แก้ไขล่าสุด',
+        field: 'updatedAt',
+        minWidth: 170,
+        filter: 'agTextColumnFilter',
+        valueFormatter: (params) => formatDateTime(params.value)
+      },
+      {
+        headerName: 'จัดการ',
+        field: 'actions',
+        pinned: 'right',
+        sortable: false,
+        filter: false,
+        resizable: false,
+        minWidth: 330,
+        cellRenderer: (params) => renderGridActionCell(params.data?.sourceRow)
+      }
+    ];
+  }
+
+  function mapDemoGridRow(row) {
+    return {
+      sourceRow: row,
+      roundId: row.round.id,
+      companyName: row.company.company_name || '-',
+      contactName: row.company.contact_name || '-',
+      contactEmailsText: (row.company.contact_emails || []).join(', ') || '-',
+      contactEmailsCopy: contactEmailsCopyText(row),
+      passwordsCopy: demoPasswordsCopyText(row),
+      hasAccounts: row.accounts.length > 0,
+      status: row.effectiveStatus || '-',
+      responsibleName: displayName(row.responsible),
+      startDate: row.round.start_date || '',
+      endDate: row.round.end_date || '',
+      totalDays: Number(row.totalDays || 0),
+      remainingDays: Number(row.remainingDays || 0),
+      accumulatedDays: Number(row.accumulatedDays || 0),
+      modulesText: row.modules.map((module) => module.name).join(', ') || '-',
+      latestLogMessage: row.latestLog?.message || '-',
+      updatedAt: row.round.updated_at || ''
+    };
+  }
+
+  function renderGridCompanyCell(data) {
+    if (!data) return '';
+    return `
+      <div class="company-copy-cell ag-grid-multi-cell">
+        <a href="#demos/${escapeAttr(data.roundId)}"><strong>${escapeHTML(data.companyName)}</strong></a>
+        <button class="btn tiny ghost" type="button" data-action="copy" data-copy="${escapeAttr(data.companyName)}" aria-label="คัดลอกชื่อบริษัท ${escapeAttr(data.companyName)}">คัดลอกชื่อบริษัท</button>
+      </div>
+    `;
+  }
+
+  function renderGridContactCell(data) {
+    if (!data) return '';
+    return `
+      <div class="contact-copy-cell ag-grid-multi-cell">
+        <span class="cell-main">${escapeHTML(data.contactEmailsText)}</span>
+        <div class="cell-actions">
+          <button class="btn tiny ghost" type="button" data-action="copy" data-copy="${escapeAttr(data.contactEmailsCopy)}" ${data.contactEmailsCopy ? '' : 'disabled'}>คัดลอกอีเมล</button>
+          <button class="btn tiny ghost" type="button" data-action="copy" data-copy="${escapeAttr(data.passwordsCopy)}" ${data.hasAccounts ? '' : 'disabled'}>คัดลอกรหัสผ่าน</button>
+        </div>
+      </div>
+    `;
+  }
+
+  function renderGridActionCell(row) {
+    if (!row) return '';
+    const canDelete = canSoftDelete(row);
+    const canClose = canCloseDemoRound(row);
+
+    return `
+      <div class="actions ag-grid-actions">
+        <a class="btn small ghost" href="#demos/${escapeAttr(row.round.id)}">ดู</a>
+        <a class="btn small secondary" href="#demos/edit/${escapeAttr(row.round.id)}">แก้ไข</a>
+        <a class="btn small success" href="#demos/new/renew/${escapeAttr(row.round.id)}">ต่ออายุ</a>
+        ${canClose ? `<button class="btn small warning" type="button" data-action="demo-close" data-id="${escapeAttr(row.round.id)}">ปิด</button>` : ''}
+        ${canShowFirstEmailAction(row) ? `<button class="btn small ghost" type="button" data-action="email-preview" data-id="${escapeAttr(row.round.id)}">อีเมล</button>` : ''}
+        ${canDelete ? `<button class="btn small danger" type="button" data-action="demo-delete" data-id="${escapeAttr(row.round.id)}">ลบ</button>` : ''}
+      </div>
+    `;
+  }
+
+  function renderLegacyDemoTable(rows) {
     if (!rows.length) return '<div class="empty">ไม่พบรายการเดโม</div>';
 
     return `
@@ -1922,7 +2175,7 @@ function renderDemoTable(rows) {
                 <tr>
                   <td>
                     <div class="company-copy-cell">
-                      <a href="#demos/${row.round.id}"><strong>${escapeHTML(row.company.company_name)}</strong></a>
+                      <a href="#demos/${escapeAttr(row.round.id)}"><strong>${escapeHTML(row.company.company_name)}</strong></a>
                       <button class="btn tiny ghost" type="button" data-action="copy" data-copy="${escapeAttr(row.company.company_name)}" aria-label="คัดลอกชื่อบริษัท ${escapeAttr(row.company.company_name)}">คัดลอกชื่อบริษัท</button>
                     </div>
                   </td>
@@ -1931,8 +2184,8 @@ function renderDemoTable(rows) {
                     <div class="contact-copy-cell">
                       <span class="cell-main">${escapeHTML((row.company.contact_emails || []).join(', ') || '-')}</span>
                       <div class="cell-actions">
-                        <button class="btn tiny ghost" data-action="copy" data-copy="${escapeAttr(contactEmailsCopyText(row))}">คัดลอกอีเมล</button>
-                        <button class="btn tiny ghost" data-action="copy" data-copy="${escapeAttr(demoPasswordsCopyText(row))}" ${row.accounts.length ? '' : 'disabled'}>คัดลอกรหัสผ่าน</button>
+                        <button class="btn tiny ghost" type="button" data-action="copy" data-copy="${escapeAttr(contactEmailsCopyText(row))}">คัดลอกอีเมล</button>
+                        <button class="btn tiny ghost" type="button" data-action="copy" data-copy="${escapeAttr(demoPasswordsCopyText(row))}" ${row.accounts.length ? '' : 'disabled'}>คัดลอกรหัสผ่าน</button>
                       </div>
                     </div>
                   </td>
@@ -1948,12 +2201,12 @@ function renderDemoTable(rows) {
                   <td>${formatDateTime(row.round.updated_at)}</td>
                   <td>
                     <div class="actions">
-                      <a class="btn small ghost" href="#demos/${row.round.id}">ดู</a>
-                      <a class="btn small secondary" href="#demos/edit/${row.round.id}">แก้ไข</a>
-                      <a class="btn small success" href="#demos/new/renew/${row.round.id}">ต่ออายุ</a>
-                      ${canClose ? `<button class="btn small warning" data-action="demo-close" data-id="${row.round.id}">ปิด</button>` : ''}
-                      ${canShowFirstEmailAction(row) ? `<button class="btn small ghost" data-action="email-preview" data-id="${row.round.id}">อีเมล</button>` : ''}
-                      ${canDelete ? `<button class="btn small danger" data-action="demo-delete" data-id="${row.round.id}">ลบ</button>` : ''}
+                      <a class="btn small ghost" href="#demos/${escapeAttr(row.round.id)}">ดู</a>
+                      <a class="btn small secondary" href="#demos/edit/${escapeAttr(row.round.id)}">แก้ไข</a>
+                      <a class="btn small success" href="#demos/new/renew/${escapeAttr(row.round.id)}">ต่ออายุ</a>
+                      ${canClose ? `<button class="btn small warning" type="button" data-action="demo-close" data-id="${escapeAttr(row.round.id)}">ปิด</button>` : ''}
+                      ${canShowFirstEmailAction(row) ? `<button class="btn small ghost" type="button" data-action="email-preview" data-id="${escapeAttr(row.round.id)}">อีเมล</button>` : ''}
+                      ${canDelete ? `<button class="btn small danger" type="button" data-action="demo-delete" data-id="${escapeAttr(row.round.id)}">ลบ</button>` : ''}
                     </div>
                   </td>
                 </tr>
@@ -1963,6 +2216,39 @@ function renderDemoTable(rows) {
         </table>
       </div>
     `;
+  }
+
+  function getAgGridThaiLocaleText() {
+    return {
+      page: 'หน้า',
+      more: 'เพิ่มเติม',
+      to: 'ถึง',
+      of: 'จาก',
+      next: 'ถัดไป',
+      last: 'สุดท้าย',
+      first: 'แรก',
+      previous: 'ก่อนหน้า',
+      loadingOoo: 'กำลังโหลด...',
+      noRowsToShow: 'ไม่มีข้อมูล',
+      searchOoo: 'ค้นหา...',
+      equals: 'เท่ากับ',
+      notEqual: 'ไม่เท่ากับ',
+      contains: 'มีคำว่า',
+      notContains: 'ไม่มีคำว่า',
+      startsWith: 'ขึ้นต้นด้วย',
+      endsWith: 'ลงท้ายด้วย',
+      filterOoo: 'กรอง...',
+      applyFilter: 'ใช้ตัวกรอง',
+      resetFilter: 'ล้างตัวกรอง',
+      clearFilter: 'ล้าง',
+      blank: 'ว่าง',
+      notBlank: 'ไม่ว่าง',
+      andCondition: 'และ',
+      orCondition: 'หรือ',
+      sortAscending: 'เรียงจากน้อยไปมาก',
+      sortDescending: 'เรียงจากมากไปน้อย',
+      sortUnSort: 'ยกเลิกการเรียง'
+    };
   }
 
 
