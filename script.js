@@ -1914,7 +1914,7 @@
       <div class="ag-grid-toolbar">
         <div>
           <strong>${rows.length.toLocaleString('th-TH')} รายการ</strong>
-          <span class="muted small-text">ใช้ AG Grid Community: คลิกหัวคอลัมน์เพื่อเรียงลำดับ, เปิด filter ที่หัวคอลัมน์ และเลื่อนแนวนอนได้</span>
+          <span class="muted small-text"></span>
         </div>
       </div>
       <div id="demo-ag-grid" class="demo-ag-grid" data-ag-grid="demo-list" aria-label="ตารางรายการเดโม"></div>
