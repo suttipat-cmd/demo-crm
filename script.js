@@ -1,11 +1,11 @@
-/* DEMO CRM v1.4.6
+/* DEMO CRM v1.4.7
    Static SPA for GitHub Pages + Supabase.
    Security rule: never place service_role key, database password, or private token in this file.
 */
 (() => {
   'use strict';
 
-  const APP_VERSION = '1.4.6';
+  const APP_VERSION = '1.4.7';
   const APP_CONFIG = {
     SUPABASE_URL: 'https://hacmassihdqlgkmwoivs.supabase.co',
     SUPABASE_ANON_KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhhY21hc3NpaGRxbGdrbXdvaXZzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkxMjk1ODgsImV4cCI6MjA5NDcwNTU4OH0.TgkJCHaRndMDZY2SANXCjFLdMkHUd_bxJOb0K9Znpa8',
@@ -3156,7 +3156,11 @@
       const { data, error } = await State.sb.from('demo_rounds').insert({
         ...roundPayload,
         created_by: State.profile.id,
-        renewed_from_round_id: renewFromId || null
+        renewed_from_round_id: renewFromId || null,
+        // รอบใหม่รวมถึงรอบต่ออายุมีวงจรการส่งอีเมลของตัวเอง
+        // ผู้ใช้ต้องเป็นผู้กดส่งอีเมลรอบใหม่ด้วยตนเอง
+        first_email_sent_at: null,
+        reminder_email_sent_at: null
       }).select().single();
       if (error) throw error;
       roundId = data.id;
@@ -3167,10 +3171,6 @@
 
     // v1.4.5: Demo create/edit form must not create activity logs.
     // Users add progress notes explicitly from the demo detail activity section.
-
-    if (isFinalStatusMeta(statusMeta)) {
-      await cleanupClosedRoundLogs(roundId);
-    }
 
     clearDemoDraft(form.dataset.draftKey || '');
     await loadAllData();
@@ -3274,7 +3274,7 @@
       message: 'ปิดรายการเดโม'
     }).catch(() => undefined);
 
-    await cleanupClosedRoundLogs(roundId);
+    // ปิดเฉพาะสถานะและเก็บประวัติ activity log ทั้งหมดไว้
     await loadAllData();
     render();
     toast('ปิดรายการแล้ว', 'success');
@@ -3290,37 +3290,7 @@
     }).eq('id', roundId);
     if (error) throw error;
 
-    await cleanupClosedRoundLogs(roundId);
-  }
-
-  async function cleanupClosedRoundLogs(roundId) {
-    if (!roundId) return;
-
-    const { data, error } = await State.sb
-      .from('activity_logs')
-      .select('id, created_at')
-      .eq('demo_round_id', roundId)
-      .is('deleted_at', null)
-      .order('created_at', { ascending: false });
-
-    if (error) {
-      console.warn('load logs for cleanup skipped:', safeError(error));
-      return;
-    }
-
-    const logs = data || [];
-    if (logs.length <= 1) return;
-
-    const idsToDelete = logs.slice(1).map((log) => log.id);
-    const { error: deleteError } = await State.sb
-      .from('activity_logs')
-      .delete()
-      .in('id', idsToDelete);
-
-    if (deleteError) {
-      console.warn('cleanup logs skipped:', safeError(deleteError));
-      toast('ล้างบันทึกเก่าไม่สำเร็จ กรุณาตรวจ SQL policy v1.1.2', 'warning');
-    }
+    // ปิดรอบเดิมจากการต่ออายุโดยไม่ลบประวัติ activity log
   }
 
   async function addActivityLog(form) {

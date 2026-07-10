@@ -4,8 +4,8 @@ DEMO CRM สำหรับทีม Customer Support ใช้จัดกา�
 
 ## Version
 
-- Current: `v1.4.6`
-- Type: AG Grid Demo Table View
+- Current: `v1.4.7`
+- Type: Activity History Preservation + Renewal Email Reset
 - Frontend: Static HTML/CSS/JS on GitHub Pages
 - Backend: Supabase Auth + Database
 - Email: Google Apps Script
@@ -28,6 +28,20 @@ supabase/
   014_v1_4_4_activity_log_rpc_rls.sql
   reset_transaction_data_keep_masters.sql
 ```
+
+## v1.4.7 Update
+
+- เปลี่ยนการปิดรายการให้แก้เฉพาะสถานะของ `demo_rounds`
+  - ไม่ลบ ไม่ soft delete และไม่ cleanup `activity_logs`
+  - เก็บประวัติ manual log และ system log ทั้งหมดของรอบเดโมไว้
+  - ครอบคลุมทั้งการกดปุ่ม `ปิด`, การเปลี่ยนเป็นสถานะจบงานจากหน้าแก้ไข และการปิดรอบเดิมเมื่อทำรายการต่ออายุ
+- รอบเดโมใหม่และรอบต่ออายุจะตั้งค่า:
+  - `first_email_sent_at = null`
+  - `reminder_email_sent_at = null`
+- หลังต่ออายุ ผู้ใช้ต้องกดส่งอีเมลเอง และสามารถส่งอีเมลแจ้งข้อมูลเดโมสำหรับรอบใหม่ได้
+- ประวัติการส่งอีเมลและ activity log ของรอบก่อนยังคงอยู่
+- ไม่เปลี่ยน database schema, Supabase RLS, RPC หรือ SQL migration
+- ไม่ต้องรัน SQL เพิ่มสำหรับ v1.4.7
 
 ## v1.4.6 Update
 
@@ -153,13 +167,7 @@ Rollback note:
 
 ## SQL Required
 
-v1.4.6 ไม่ต้องรัน SQL เพิ่ม หากฐานข้อมูลเคยอยู่บน schema v1.4.5 อยู่แล้ว
-
-v1.4.3 ต้องรัน SQL เพิ่ม 1 ไฟล์หลัง deploy โค้ด หรือก่อน deploy ก็ได้:
-
-```txt
-supabase/013_v1_4_3_activity_log_latest_manual_rls.sql
-```
+v1.4.7 ไม่ต้องรัน SQL เพิ่ม หากฐานข้อมูลเคยอยู่บน schema v1.4.6 อยู่แล้ว
 
 ถ้ายังไม่เคยรัน migration เดิม ให้รันตามลำดับนี้ก่อนใช้งานเวอร์ชันล่าสุด:
 
@@ -169,13 +177,14 @@ supabase/010_v1_3_0_profile_avatar.sql
 supabase/011_v1_3_2_notification_states.sql
 supabase/012_v1_3_8_status_master.sql
 supabase/013_v1_4_3_activity_log_latest_manual_rls.sql
+supabase/014_v1_4_4_activity_log_rpc_rls.sql
 ```
 
 หมายเหตุ:
 - ห้ามปิด RLS เพื่อแก้ error
-- SQL v1.4.3 เป็น idempotent และรันซ้ำได้
-- ควร backup database ก่อนรันจริงทุกครั้ง
-- Rollback: ถ้าเกิดปัญหา ให้ restore database backup ก่อนรัน v1.4.3 หรือแจ้ง error exact message ก่อนแก้ต่อ
+- ควร backup database ก่อนรัน migration จริงทุกครั้ง
+- Frontend v1.4.7 ยังใช้ RPC จาก SQL v1.4.4 สำหรับแก้ไข/ลบ manual log ล่าสุด
+- Rollback frontend: กลับไป tag/commit v1.4.6 ได้โดยไม่ต้อง rollback database
 
 ## Status Master Design
 
@@ -237,7 +246,7 @@ supabase/reset_transaction_data_keep_masters.sql
 
 ```bash
 git add .
-git commit -m "Release v1.4.6 AG Grid demo table"
+git commit -m "Release v1.4.7 preserve activity history and reset renewal email"
 git push
 ```
 
@@ -247,6 +256,17 @@ git push
 Mac: Cmd + Shift + R
 Windows: Ctrl + F5
 ```
+
+## Smoke Test เพิ่มเติมสำหรับ v1.4.7
+
+- เลือกรอบเดโมที่มี activity log อย่างน้อย 2 รายการ แล้วกด `ปิด`
+- ตรวจว่าสถานะเปลี่ยนเป็น `ปิดรายการ` และ activity log เดิมยังอยู่ครบ
+- เปลี่ยนสถานะเป็นสถานะจบงานจากหน้า `แก้ไขเดโม` แล้วตรวจว่า activity log ไม่ถูกลบ
+- ต่ออายุ demo ที่เคยส่งอีเมลแล้ว
+- ตรวจว่ารอบเดิมถูกปิด แต่ activity log และประวัติอีเมลของรอบเดิมยังอยู่
+- เปิดรอบต่ออายุใหม่และตรวจว่าปุ่ม `อีเมล` แสดงสำหรับ user ปกติ
+- กดส่งอีเมลรอบใหม่ด้วยตนเอง แล้วตรวจว่า `first_email_sent_at` ถูกบันทึกเฉพาะรอบใหม่
+- ตรวจว่าการส่งอีเมลรอบใหม่ไม่เปลี่ยนค่า `first_email_sent_at` ของรอบเดิม
 
 ## Smoke Test เพิ่มเติมสำหรับ v1.4.6
 
