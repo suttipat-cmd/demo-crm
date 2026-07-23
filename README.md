@@ -4,8 +4,8 @@ DEMO CRM สำหรับทีม Customer Support ใช้จัดกา�
 
 ## Version
 
-- Current: `v1.4.7`
-- Type: Activity History Preservation + Renewal Email Reset
+- Current: `v1.4.8`
+- Type: Hard Delete Demo Round + Related Data Cleanup RPC
 - Frontend: Static HTML/CSS/JS on GitHub Pages
 - Backend: Supabase Auth + Database
 - Email: Google Apps Script
@@ -26,8 +26,49 @@ supabase/
   012_v1_3_8_status_master.sql
   013_v1_4_3_activity_log_latest_manual_rls.sql
   014_v1_4_4_activity_log_rpc_rls.sql
+  015_v1_4_8_hard_delete_demo_round.sql
   reset_transaction_data_keep_masters.sql
 ```
+
+## v1.4.8 Update
+
+- เปลี่ยนปุ่ม `ลบ` รายการเดโมจาก Soft Delete เป็น Hard Delete ผ่าน RPC:
+  - `hard_delete_demo_round(p_round_id)`
+- เมื่อยืนยันการลบ ระบบจะลบข้อมูลที่เป็นของรอบเดโมนั้นทั้งหมด:
+  - `demo_accounts`
+  - `demo_round_modules`
+  - `activity_logs`
+  - `email_logs`
+  - `notification_states` ที่เกี่ยวข้อง
+  - แถวรอบเดโมใน `demo_rounds`
+- หากมีรอบต่ออายุอื่นอ้างอิงรอบที่ถูกลบ ระบบจะเก็บรอบอื่นไว้และตัดเฉพาะ `renewed_from_round_id`
+- หากบริษัทไม่มีรอบเดโมอื่นเหลืออยู่ ระบบจะลบ Activity Log ระดับบริษัทที่ยังเหลือและแถวใน `companies`
+- หากบริษัทยังมีรอบเดโมอื่น ระบบจะไม่ลบบริษัทและไม่กระทบรอบอื่น
+- Permission:
+  - Admin ลบได้ทุกสถานะ
+  - User ลบได้เฉพาะรายการสถานะ `รอดำเนินการ` ที่ตนเองสร้าง
+- การลบทำงานภายใน transaction เดียว หากขั้นตอนใดผิดพลาดจะ rollback ทั้งหมด
+- ยังคงเปิด RLS และไม่ใช้ `service_role` ใน Frontend
+- ต้องรัน SQL `supabase/015_v1_4_8_hard_delete_demo_round.sql` ก่อน Deploy Frontend v1.4.8
+
+### Install SQL v1.4.8
+
+1. Backup ฐานข้อมูลก่อน
+2. เปิด Supabase SQL Editor
+3. รันไฟล์:
+
+```txt
+supabase/015_v1_4_8_hard_delete_demo_round.sql
+```
+
+4. ตรวจว่าไม่มี Error และพบฟังก์ชัน `hard_delete_demo_round`
+5. Deploy Frontend v1.4.8
+6. Hard refresh หน้าเว็บ
+
+Rollback note:
+- สามารถ rollback Frontend กลับไป v1.4.7 ได้
+- RPC v1.4.8 สามารถคงอยู่ในฐานข้อมูลได้ แต่ Frontend v1.4.7 จะไม่เรียกใช้
+- ข้อมูลที่ถูก Hard Delete ไปแล้วไม่สามารถกู้คืนด้วยการ rollback โค้ด
 
 ## v1.4.7 Update
 
@@ -167,7 +208,11 @@ Rollback note:
 
 ## SQL Required
 
-v1.4.7 ไม่ต้องรัน SQL เพิ่ม หากฐานข้อมูลเคยอยู่บน schema v1.4.6 อยู่แล้ว
+v1.4.8 ต้องรัน migration ต่อไปนี้ก่อน Deploy Frontend:
+
+```txt
+supabase/015_v1_4_8_hard_delete_demo_round.sql
+```
 
 ถ้ายังไม่เคยรัน migration เดิม ให้รันตามลำดับนี้ก่อนใช้งานเวอร์ชันล่าสุด:
 
@@ -178,13 +223,15 @@ supabase/011_v1_3_2_notification_states.sql
 supabase/012_v1_3_8_status_master.sql
 supabase/013_v1_4_3_activity_log_latest_manual_rls.sql
 supabase/014_v1_4_4_activity_log_rpc_rls.sql
+supabase/015_v1_4_8_hard_delete_demo_round.sql
 ```
 
 หมายเหตุ:
 - ห้ามปิด RLS เพื่อแก้ error
 - ควร backup database ก่อนรัน migration จริงทุกครั้ง
-- Frontend v1.4.7 ยังใช้ RPC จาก SQL v1.4.4 สำหรับแก้ไข/ลบ manual log ล่าสุด
-- Rollback frontend: กลับไป tag/commit v1.4.6 ได้โดยไม่ต้อง rollback database
+- Frontend v1.4.8 ใช้ RPC จาก SQL v1.4.4 สำหรับแก้ไข/ลบ manual log ล่าสุด
+- Frontend v1.4.8 ใช้ RPC จาก SQL v1.4.8 สำหรับ Hard Delete รายการเดโม
+- ต้องรัน SQL v1.4.8 ก่อน Deploy Frontend เพื่อป้องกันปุ่มลบเรียกฟังก์ชันไม่พบ
 
 ## Status Master Design
 
@@ -246,7 +293,7 @@ supabase/reset_transaction_data_keep_masters.sql
 
 ```bash
 git add .
-git commit -m "Release v1.4.7 preserve activity history and reset renewal email"
+git commit -m "Release v1.4.8 hard delete demo round with related data"
 git push
 ```
 
@@ -256,6 +303,29 @@ git push
 Mac: Cmd + Shift + R
 Windows: Ctrl + F5
 ```
+
+## Smoke Test เพิ่มเติมสำหรับ v1.4.8
+
+ก่อนทดสอบ ให้สร้างข้อมูลทดสอบและ Backup ฐานข้อมูล
+
+- Login ด้วย User แล้วสร้างรายการสถานะ `รอดำเนินการ`
+- เพิ่มบัญชีเดโม โมดูล บันทึกความคืบหน้า และส่งอีเมลทดสอบ
+- กด `ลบ` แล้วตรวจว่ามีข้อความเตือนว่าเป็นการลบถาวร
+- กด `ยกเลิก` แล้วตรวจว่าไม่มีข้อมูลใดถูกลบ
+- กด `ลบ` และยืนยัน แล้วตรวจว่ารายการหายจาก Dashboard, ตาราง, ปฏิทิน และรายงาน
+- ตรวจฐานข้อมูลว่าไม่เหลือข้อมูลของรอบนั้นใน:
+  - `demo_rounds`
+  - `demo_accounts`
+  - `demo_round_modules`
+  - `activity_logs`
+  - `email_logs`
+  - `notification_states`
+- หากบริษัทมีรอบอื่น ให้ตรวจว่าบริษัทและรอบอื่นยังอยู่ครบ
+- หากบริษัทไม่มีรอบอื่น ให้ตรวจว่า `companies` ถูกลบ
+- ทดสอบ User ลบรายการของ User อื่นหรือรายการที่ไม่ใช่ `รอดำเนินการ` ต้องถูกปฏิเสธ
+- ทดสอบ Admin ลบรายการสถานะอื่นได้
+- ทดสอบกรณี RPC หรือ Foreign Key Error ต้องไม่มีข้อมูลถูกลบเพียงบางส่วน
+- ตรวจ Flow เดิม: สร้างเดโม, แก้ไข, ต่ออายุ, ปิดรายการ, Activity Log, ส่งอีเมล, Export และ Notification
 
 ## Smoke Test เพิ่มเติมสำหรับ v1.4.7
 
@@ -366,4 +436,3 @@ Windows: Ctrl + F5
 - คง section `จำนวนตามโมดูล` ไว้เหมือนเดิม
 - ไม่มีการเปลี่ยน database schema
 - อัปเดต README คู่กับโค้ดตาม release rule
-

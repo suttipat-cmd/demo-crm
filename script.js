@@ -1,11 +1,11 @@
-/* DEMO CRM v1.4.7
+/* DEMO CRM v1.4.8
    Static SPA for GitHub Pages + Supabase.
    Security rule: never place service_role key, database password, or private token in this file.
 */
 (() => {
   'use strict';
 
-  const APP_VERSION = '1.4.7';
+  const APP_VERSION = '1.4.8';
   const APP_CONFIG = {
     SUPABASE_URL: 'https://hacmassihdqlgkmwoivs.supabase.co',
     SUPABASE_ANON_KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhhY21hc3NpaGRxbGdrbXdvaXZzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkxMjk1ODgsImV4cCI6MjA5NDcwNTU4OH0.TgkJCHaRndMDZY2SANXCjFLdMkHUd_bxJOb0K9Znpa8',
@@ -448,7 +448,7 @@
         break;
       case 'demo-delete':
         await withButtonLoading(target, async () => {
-          await softDeleteDemo(target.dataset.id);
+          await hardDeleteDemo(target.dataset.id);
         });
         break;
       case 'email-preview':
@@ -2128,7 +2128,7 @@
 
   function renderGridActionCell(row) {
     if (!row) return '';
-    const canDelete = canSoftDelete(row);
+    const canDelete = canHardDelete(row);
     const canClose = canCloseDemoRound(row);
 
     return `
@@ -2169,7 +2169,7 @@
           </thead>
           <tbody>
             ${rows.map((row) => {
-              const canDelete = canSoftDelete(row);
+              const canDelete = canHardDelete(row);
               const canClose = canCloseDemoRound(row);
               return `
                 <tr>
@@ -3398,32 +3398,36 @@
     toast('ลบบันทึกแล้ว', 'success');
   }
 
-  async function softDeleteDemo(roundId) {
+  async function hardDeleteDemo(roundId) {
     const row = getDemoRow(roundId);
     if (!row) return;
-    if (!canSoftDelete(row)) {
+    if (!canHardDelete(row)) {
       toast('ไม่มีสิทธิ์ลบรายการนี้', 'error');
       return;
     }
 
-    if (!window.confirm(`ลบเดโมของ ${row.company.company_name} หรือไม่?`)) return;
+    const warning = [
+      `ลบเดโมของ ${row.company.company_name} แบบถาวรหรือไม่?`,
+      '',
+      'ระบบจะลบรอบเดโม บัญชี โมดูล บันทึก อีเมล และการแจ้งเตือนที่เกี่ยวข้อง',
+      'การดำเนินการนี้ไม่สามารถย้อนกลับได้'
+    ].join('\n');
+    if (!window.confirm(warning)) return;
 
-    const { error } = await State.sb.from('demo_rounds').update({
-      deleted_at: new Date().toISOString()
-    }).eq('id', roundId);
-    if (error) throw error;
-
-    await insertActivityLog({
-      company_id: row.company.id,
-      demo_round_id: row.round.id,
-      log_type: 'หมายเหตุทั่วไป',
-      source: 'system',
-      message: 'ลบรอบเดโมแบบ soft delete'
-    }).catch(() => undefined);
+    const { data, error } = await State.sb.rpc('hard_delete_demo_round', {
+      p_round_id: roundId
+    });
+    if (error) throw hardDeleteDemoError(error);
+    if (!data?.ok) throw new Error('ลบรายการไม่สำเร็จ กรุณาลองใหม่อีกครั้ง');
 
     await loadAllData();
     render();
-    toast('ลบเดโมแล้ว', 'success');
+    toast(
+      data.company_deleted
+        ? 'ลบเดโมและข้อมูลบริษัทที่ไม่มีรอบอื่นแล้ว'
+        : 'ลบเดโมและข้อมูลที่เกี่ยวข้องแล้ว',
+      'success'
+    );
   }
 
   function openEmailPreview(roundId, type = 'first_demo_email') {
@@ -4726,7 +4730,7 @@ async function saveModule(form) {
     return row.round.end_date <= todayISO() && row.statusSystemKey !== 'closed' && row.effectiveStatus !== STATUS.CLOSED;
   }
 
-  function canSoftDelete(row) {
+  function canHardDelete(row) {
     if (userIsAdmin()) return true;
     return row.round.created_by === State.profile?.id && (row.statusSystemKey === 'pending' || row.effectiveStatus === STATUS.PENDING);
   }
@@ -4917,6 +4921,32 @@ async function saveModule(form) {
       return new Error('แก้ไข/ลบบันทึกไม่สำเร็จ: กรุณารัน SQL v1.4.4 เพื่ออัปเดต RPC/RLS ของ activity_logs แล้วลองใหม่');
     }
     return error;
+  }
+
+  function hardDeleteDemoError(error) {
+    const message = safeError(error);
+
+    if (/Only an admin or the owner of a pending demo round/i.test(message)) {
+      return new Error('ไม่มีสิทธิ์ลบรายการนี้ ต้องเป็นผู้ดูแลระบบ หรือเป็นเจ้าของรายการที่อยู่ในสถานะรอดำเนินการ');
+    }
+
+    if (/Demo round not found/i.test(message)) {
+      return new Error('ไม่พบรายการเดโม อาจถูกลบไปแล้ว กรุณารีเฟรชข้อมูล');
+    }
+
+    if (
+      /hard_delete_demo_round/i.test(message)
+      || /could not find.*function/i.test(message)
+      || /schema cache/i.test(message)
+    ) {
+      return new Error('ยังไม่ได้ติดตั้ง SQL v1.4.8 กรุณารันไฟล์ 015_v1_4_8_hard_delete_demo_round.sql แล้วลองใหม่');
+    }
+
+    if (/foreign key|violates.*constraint/i.test(message)) {
+      return new Error('ลบรายการไม่สำเร็จ เนื่องจากยังมีข้อมูลอื่นอ้างอิงรายการนี้ กรุณาตรวจสอบฐานข้อมูล');
+    }
+
+    return error instanceof Error ? error : new Error(message);
   }
 
   function safeError(error) {
