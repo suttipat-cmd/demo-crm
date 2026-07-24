@@ -1,11 +1,11 @@
-/* DEMO CRM v1.4.8
+/* DEMO CRM v1.5.0
    Static SPA for GitHub Pages + Supabase.
    Security rule: never place service_role key, database password, or private token in this file.
 */
 (() => {
   'use strict';
 
-  const APP_VERSION = '1.4.8';
+  const APP_VERSION = '1.5.0';
   const APP_CONFIG = {
     SUPABASE_URL: 'https://hacmassihdqlgkmwoivs.supabase.co',
     SUPABASE_ANON_KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhhY21hc3NpaGRxbGdrbXdvaXZzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkxMjk1ODgsImV4cCI6MjA5NDcwNTU4OH0.TgkJCHaRndMDZY2SANXCjFLdMkHUd_bxJOb0K9Znpa8',
@@ -15,8 +15,10 @@
   const BRAND_LOGO_DATA_URI = 'data:image/png;base64,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';
 
   const AUTH_TIMEOUT_MS = 12000;
-  const DATA_TIMEOUT_MS = 18000;
+  const DATA_TIMEOUT_MS = 60000;
   const FOREGROUND_REFRESH_COOLDOWN_MS = 30000;
+  const DATA_PAGE_SIZE = 500;
+  const DATA_MAX_ROWS_PER_TABLE = 50000;
 
   const STATUS = Object.freeze({
     PENDING: 'รอดำเนินการ',
@@ -88,11 +90,22 @@
     reportSearch: '',
     adminTab: 'users',
     searchRenderTimer: null,
-    reportRenderTimer: null
+    reportRenderTimer: null,
+    pendingActions: new Set(),
+    sensitiveAccountsByRound: new Map(),
+    sensitiveAccountsLoading: new Set(),
+    sensitiveAccountsPromises: new Map(),
+    dataRevision: 0,
+    demoRowsCache: null,
+    latestDemoRowsCache: null,
+    demoGridColumnState: null,
+    demoGridFilterModel: null,
+    modalReturnFocus: null
   };
 
   const $ = (selector, root = document) => root.querySelector(selector);
   const $$ = (selector, root = document) => Array.from(root.querySelectorAll(selector));
+  let accessibleControlSequence = 0;
 
   document.addEventListener('DOMContentLoaded', boot);
   window.addEventListener('hashchange', () => {
@@ -108,7 +121,7 @@
 
     if (!window.supabase || typeof window.supabase.createClient !== 'function') {
       State.authReady = true;
-      State.bootError = 'โหลด Supabase client ไม่สำเร็จ กรุณาตรวจสอบ internet/CDN หรือเปิดใหม่อีกครั้ง';
+      State.bootError = 'โหลด Supabase client ไม่สำเร็จ กรุณาตรวจสอบว่าโฟลเดอร์ vendor ถูกอัปโหลดครบ แล้วเปิดใหม่อีกครั้ง';
       render();
       return;
     }
@@ -174,6 +187,11 @@
     if (!State.session) {
       State.profile = null;
       State.dataLoaded = false;
+      State.sensitiveAccountsByRound.clear();
+      State.sensitiveAccountsLoading.clear();
+      State.sensitiveAccountsPromises.clear();
+      State.demoRowsCache = null;
+      State.latestDemoRowsCache = null;
       State.loading = false;
       State.loadingMessage = '';
       render();
@@ -378,9 +396,6 @@
         break;
       case 'notification-toggle':
         State.notificationsOpen = !State.notificationsOpen;
-        if (State.notificationsOpen) {
-          await markCurrentNotificationsRead();
-        }
         render();
         break;
       case 'notification-close':
@@ -399,6 +414,12 @@
       case 'notification-clear-all':
         await withButtonLoading(target, async () => {
           await dismissVisibleNotifications(target.dataset.kind || 'all');
+        });
+        break;
+      case 'notification-mark-all-read':
+        await withButtonLoading(target, async () => {
+          await markCurrentNotificationsRead();
+          render();
         });
         break;
       case 'notification-filter':
@@ -452,7 +473,10 @@
         });
         break;
       case 'email-preview':
-        openEmailPreview(target.dataset.id, target.dataset.type || 'first_demo_email');
+        await withButtonLoading(target, async () => {
+          await ensureSensitiveAccounts(target.dataset.id);
+          openEmailPreview(target.dataset.id, target.dataset.type || 'first_demo_email');
+        });
         break;
       case 'email-send':
         await withButtonLoading(target, async () => {
@@ -513,6 +537,23 @@
         State.demoPage = 1;
         location.hash = '#demos';
         break;
+      case 'dashboard-range-reset':
+        State.dashboardRange = defaultMonthRange();
+        resetDashboardPages();
+        render();
+        break;
+      case 'demo-filter-reset':
+        State.filters = {
+          search: '',
+          status: '',
+          responsible: '',
+          module: '',
+          sort: 'updated_desc',
+          nearOnly: false
+        };
+        State.demoPage = 1;
+        render();
+        break;
       case 'admin-template-reset':
         await withButtonLoading(target, async () => {
           await resetTemplate(target.dataset.key);
@@ -572,7 +613,15 @@
     }
 
     if (target.matches('[data-dashboard-range]')) {
-      State.dashboardRange[target.dataset.dashboardRange] = target.value;
+      const key = target.dataset.dashboardRange;
+      const previous = State.dashboardRange[key];
+      const nextRange = { ...State.dashboardRange, [key]: target.value };
+      if (nextRange.start && nextRange.end && nextRange.start > nextRange.end) {
+        target.value = previous;
+        toast('วันที่เริ่มต้องไม่หลังวันที่สิ้นสุด', 'warning');
+        return;
+      }
+      State.dashboardRange = nextRange;
       resetDashboardPages();
       render();
       return;
@@ -582,7 +631,13 @@
       const form = target.closest('form');
       if (form && isFinalStatusValue(target.value)) {
         const endDate = form.querySelector('[name="end_date"]');
-        if (endDate) endDate.value = todayISO();
+        if (endDate) {
+          endDate.value = todayISO();
+          endDate.readOnly = true;
+        }
+      } else if (form) {
+        const endDate = form.querySelector('[name="end_date"]');
+        if (endDate) endDate.readOnly = false;
       }
     }
 
@@ -636,6 +691,30 @@
   }
 
   function handleKeyDown(event) {
+    const modal = document.querySelector('#modal-root [role="dialog"]');
+    if (modal) {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        closeModal();
+        return;
+      }
+      if (event.key === 'Tab') {
+        const focusable = $$('button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])', modal)
+          .filter((element) => !element.hidden && element.offsetParent !== null);
+        if (focusable.length) {
+          const first = focusable[0];
+          const last = focusable[focusable.length - 1];
+          if (event.shiftKey && document.activeElement === first) {
+            event.preventDefault();
+            last.focus();
+          } else if (!event.shiftKey && document.activeElement === last) {
+            event.preventDefault();
+            first.focus();
+          }
+        }
+      }
+    }
+
     const input = event.target.closest('[data-chip-input]');
     if (!input) return;
 
@@ -657,12 +736,23 @@
     if (!button) return fn();
     if (button.disabled) return undefined;
 
+    const form = button.form || button.closest('form');
+    const actionName = button.dataset.action || form?.dataset.action || 'action';
+    const targetId = button.dataset.id || form?.dataset.editId || form?.dataset.renewFromId || form?.id || '';
+    const actionKey = `${actionName}:${targetId}`;
+    if (State.pendingActions.has(actionKey)) {
+      toast('รายการนี้กำลังดำเนินการอยู่ กรุณารอสักครู่', 'warning');
+      return undefined;
+    }
+
     const original = button.innerHTML;
+    State.pendingActions.add(actionKey);
     button.disabled = true;
     button.innerHTML = 'กำลังดำเนินการ...';
     try {
       return await fn();
     } finally {
+      State.pendingActions.delete(actionKey);
       button.disabled = false;
       button.innerHTML = original;
     }
@@ -711,29 +801,44 @@
     if (error) throw error;
 
     if (!data) {
-      const fallback = {
-        id: user.id,
-        email: user.email || '',
-        full_name: user.email || 'ผู้ใช้',
-        role: 'user',
-        is_active: true
-      };
-      const { error: insertError } = await withTimeout(
-        State.sb.from('profiles').insert(fallback),
-        DATA_TIMEOUT_MS,
-        'สร้าง profile เริ่มต้นนานเกินไป'
-      );
-      if (insertError) throw insertError;
-      State.profile = fallback;
-    } else {
-      State.profile = data;
+      throw new Error('ยังไม่มีโปรไฟล์ผู้ใช้งาน กรุณาให้ผู้ดูแลระบบเพิ่มบัญชีนี้ก่อน');
     }
+    State.profile = data;
 
     if (!State.profile.is_active) {
       toast('บัญชีนี้ถูกปิดใช้งาน กรุณาติดต่อผู้ดูแลระบบ', 'error');
       await State.sb.auth.signOut();
       throw new Error('บัญชีนี้ถูกปิดใช้งาน กรุณาติดต่อผู้ดูแลระบบ');
     }
+  }
+
+  async function fetchAllPages(buildQuery, label, maxRows = DATA_MAX_ROWS_PER_TABLE) {
+    const rows = [];
+    let offset = 0;
+
+    while (offset < maxRows) {
+      const { data, error } = await buildQuery(offset, offset + DATA_PAGE_SIZE - 1);
+      if (error) throw new Error(`${label}: ${safeError(error)}`);
+
+      const page = data || [];
+      if (!page.length) break;
+      rows.push(...page);
+      offset += page.length;
+    }
+
+    if (rows.length >= maxRows) {
+      throw new Error(`${label} มีข้อมูลเกิน ${maxRows.toLocaleString('th-TH')} รายการ กรุณาเพิ่ม server-side pagination ก่อนใช้งานต่อ`);
+    }
+
+    return { data: rows, error: null };
+  }
+
+  function mergeSensitiveAccounts(publicAccounts) {
+    return (publicAccounts || []).map((account) => {
+      const sensitive = State.sensitiveAccountsByRound.get(account.demo_round_id)
+        ?.find((item) => item.id === account.id);
+      return sensitive ? { ...account, password: sensitive.password || '' } : account;
+    });
   }
 
   async function loadAllData(showToast = false, seq = State.loadSeq) {
@@ -758,19 +863,19 @@
 
       const responses = await withTimeout(
         Promise.all([
-          State.sb.from('profiles').select('*').order('full_name'),
-          State.sb.from('responsible_people').select('*').order('name'),
-          State.sb.from('companies').select('*').is('deleted_at', null).order('updated_at', { ascending: false }),
-          State.sb.from('demo_rounds').select('*').is('deleted_at', null).order('updated_at', { ascending: false }),
-          State.sb.from('demo_accounts').select('*').order('created_at', { ascending: true }),
-          State.sb.from('modules').select('*').order('sort_order', { ascending: true }).order('name'),
-          State.sb.from('demo_statuses').select('*').order('sort_order', { ascending: true }).order('name'),
-          State.sb.from('demo_round_modules').select('*'),
-          State.sb.from('activity_logs').select('*').is('deleted_at', null).order('created_at', { ascending: false }),
-          State.sb.from('email_logs').select('*').order('created_at', { ascending: false }).limit(250),
-          State.sb.from('email_templates').select('*').eq('is_active', true).order('template_key'),
-          State.sb.from('settings').select('*'),
-          State.sb.from('notification_states').select('*').eq('user_id', State.session.user.id)
+          fetchAllPages((from, to) => State.sb.from('profiles').select('*').order('full_name').range(from, to), 'profiles'),
+          fetchAllPages((from, to) => State.sb.from('responsible_people').select('*').order('name').range(from, to), 'responsible_people'),
+          fetchAllPages((from, to) => State.sb.from('companies').select('*').is('deleted_at', null).order('updated_at', { ascending: false }).range(from, to), 'companies'),
+          fetchAllPages((from, to) => State.sb.from('demo_rounds').select('*').is('deleted_at', null).order('updated_at', { ascending: false }).range(from, to), 'demo_rounds'),
+          fetchAllPages((from, to) => State.sb.from('demo_accounts').select('id,demo_round_id,login_email,note,created_at').order('created_at', { ascending: true }).range(from, to), 'demo_accounts'),
+          fetchAllPages((from, to) => State.sb.from('modules').select('*').order('sort_order', { ascending: true }).order('name').range(from, to), 'modules'),
+          fetchAllPages((from, to) => State.sb.from('demo_statuses').select('*').order('sort_order', { ascending: true }).order('name').range(from, to), 'demo_statuses'),
+          fetchAllPages((from, to) => State.sb.from('demo_round_modules').select('*').range(from, to), 'demo_round_modules'),
+          fetchAllPages((from, to) => State.sb.from('activity_logs').select('*').is('deleted_at', null).order('created_at', { ascending: false }).range(from, to), 'activity_logs'),
+          fetchAllPages((from, to) => State.sb.from('email_logs').select('id,demo_round_id,email_type,subject,sent_status,sent_at,error_message,created_at,idempotency_key').order('created_at', { ascending: false }).range(from, to), 'email_logs', 5000),
+          fetchAllPages((from, to) => State.sb.from('email_templates').select('*').eq('is_active', true).order('template_key').range(from, to), 'email_templates'),
+          fetchAllPages((from, to) => State.sb.from('settings').select('*').range(from, to), 'settings'),
+          fetchAllPages((from, to) => State.sb.from('notification_states').select('*').eq('user_id', State.session.user.id).range(from, to), 'notification_states')
         ]),
         DATA_TIMEOUT_MS,
         'โหลดข้อมูลหลักนานเกินไป กรุณากดรีเฟรช'
@@ -801,7 +906,7 @@
       State.responsiblePeople = responsiblePeople.data || [];
       State.companies = companies.data || [];
       State.rounds = rounds.data || [];
-      State.accounts = accounts.data || [];
+      State.accounts = mergeSensitiveAccounts(accounts.data || []);
       State.modules = modules.data || [];
       State.demoStatuses = normalizeStatusMasters(demoStatuses.data || []);
       State.roundModules = roundModules.data || [];
@@ -810,6 +915,9 @@
       State.emailTemplates = emailTemplates.data || [];
       State.settings = Object.fromEntries((settings.data || []).map((row) => [row.key, row.value]));
       State.notificationStates = notificationStates.data || [];
+      State.dataRevision += 1;
+      State.demoRowsCache = null;
+      State.latestDemoRowsCache = null;
       cacheBrandLogo(State.settings.brand_logo_data_uri);
 
       State.dataLoaded = true;
@@ -837,37 +945,94 @@
 
     if (!State.authReady) {
       app.className = 'app-loading';
+      app.setAttribute('aria-busy', 'true');
       app.innerHTML = renderBootLoading(State.loadingMessage || 'กำลังเริ่มระบบ...');
+      bindAccessibleMarkup(app);
       return;
     }
 
     if (!State.session) {
       app.className = '';
+      app.setAttribute('aria-busy', 'false');
       app.innerHTML = renderLogin();
+      bindAccessibleMarkup(app);
       return;
     }
 
     const route = State.currentRoute || '#dashboard';
     app.className = '';
+    app.setAttribute('aria-busy', State.loading ? 'true' : 'false');
     app.innerHTML = renderShell(route);
+    bindAccessibleMarkup(app);
     hydrateDemoGrid();
+    requestSensitiveAccountsForRoute(route);
+  }
+
+  function getSensitiveRoundIdFromRoute(route) {
+    if (route.startsWith('#demos/edit/')) return route.replace('#demos/edit/', '');
+    if (route.startsWith('#demos/new/renew/')) return route.replace('#demos/new/renew/', '');
+    if (route.startsWith('#demos/') && route !== '#demos/new') return route.replace('#demos/', '');
+    return '';
+  }
+
+  function requestSensitiveAccountsForRoute(route) {
+    const roundId = getSensitiveRoundIdFromRoute(route);
+    if (!roundId || State.sensitiveAccountsByRound.has(roundId) || State.sensitiveAccountsLoading.has(roundId)) return;
+
+    ensureSensitiveAccounts(roundId)
+      .then(() => {
+        if (getSensitiveRoundIdFromRoute(State.currentRoute || '') === roundId) render();
+      })
+      .catch((error) => {
+        toast(`โหลดข้อมูลบัญชีไม่สำเร็จ: ${safeError(error)}`, 'error');
+      });
+  }
+
+  async function ensureSensitiveAccounts(roundId) {
+    if (!roundId) throw new Error('ไม่พบรหัสรอบเดโม');
+    if (State.sensitiveAccountsByRound.has(roundId)) {
+      return State.sensitiveAccountsByRound.get(roundId);
+    }
+    if (State.sensitiveAccountsPromises.has(roundId)) {
+      return State.sensitiveAccountsPromises.get(roundId);
+    }
+
+    const request = (async () => {
+      const { data, error } = await State.sb.rpc('get_demo_accounts_sensitive', {
+        p_round_id: roundId
+      });
+      if (error) {
+        throw migrationAwareError(error, 'get_demo_accounts_sensitive');
+      }
+
+      const sensitiveRows = data || [];
+      State.sensitiveAccountsByRound.set(roundId, sensitiveRows);
+      const sensitiveById = new Map(sensitiveRows.map((item) => [item.id, item]));
+      State.accounts = State.accounts.map((account) => {
+        if (account.demo_round_id !== roundId) return account;
+        const sensitive = sensitiveById.get(account.id);
+        return sensitive ? { ...account, password: sensitive.password || '' } : account;
+      });
+      State.dataRevision += 1;
+      State.demoRowsCache = null;
+      State.latestDemoRowsCache = null;
+      return sensitiveRows;
+    })();
+
+    State.sensitiveAccountsPromises.set(roundId, request);
+    State.sensitiveAccountsLoading.add(roundId);
+    try {
+      return await request;
+    } finally {
+      State.sensitiveAccountsLoading.delete(roundId);
+      State.sensitiveAccountsPromises.delete(roundId);
+    }
   }
 
   function renderBootLoading(message) {
     return `
-      <div class="loading-card">
+      <div class="loading-card" role="status" aria-live="polite">
         <div class="spinner" aria-hidden="true"></div>
-        <p>${escapeHTML(message)}</p>
-      </div>
-    `;
-  }
-
-  function renderFatal(message) {
-    const app = $('#app');
-    app.className = 'app-loading';
-    app.innerHTML = `
-      <div class="loading-card">
-        <h1>เปิดระบบไม่ได้</h1>
         <p>${escapeHTML(message)}</p>
       </div>
     `;
@@ -979,7 +1144,7 @@
           </nav>
           <div class="header-tools">
             <div class="notification-wrap">
-              <button class="icon-button notification-button ${State.notificationsOpen ? 'active' : ''}" type="button" data-action="notification-toggle" title="แจ้งเตือน" aria-label="แจ้งเตือน">
+              <button class="icon-button notification-button ${State.notificationsOpen ? 'active' : ''}" type="button" data-action="notification-toggle" title="แจ้งเตือน" aria-label="แจ้งเตือน" aria-expanded="${State.notificationsOpen}" aria-controls="notification-panel">
                 <span aria-hidden="true">🔔</span>
                 ${unreadNotificationCount ? `<span class="notification-badge">${unreadNotificationCount > 99 ? '99+' : unreadNotificationCount}</span>` : ''}
               </button>
@@ -1426,11 +1591,11 @@
     const items = visibleItems.slice(0, 12);
 
     return `
-      <section class="notification-panel" aria-label="รายการแจ้งเตือน">
+      <section class="notification-panel" id="notification-panel" aria-label="รายการแจ้งเตือน">
         <header class="notification-head">
           <div>
             <strong>แจ้งเตือน${unreadCount ? ` (${unreadCount} ใหม่)` : ''}</strong>
-            <p>เปิดแล้วถือว่าอ่านแล้ว กด × เพื่อซ่อนรายการที่ไม่ต้องการเห็นอีก</p>
+            <p>กด “อ่านแล้วทั้งหมด” เมื่อตรวจสอบเรียบร้อย หรือกด × เพื่อซ่อนเฉพาะรายการ</p>
           </div>
           <button class="btn small ghost" type="button" data-action="notification-close">ปิด</button>
         </header>
@@ -1457,6 +1622,7 @@
         </div>
         <footer class="notification-footer">
           <button class="btn small secondary" type="button" data-action="notification-filter" data-kind="${escapeAttr(activeKind)}">ดูในรายการเดโม</button>
+          <button class="btn small ghost" type="button" data-action="notification-mark-all-read" ${unreadCount ? '' : 'disabled'}>อ่านแล้วทั้งหมด</button>
           <button class="btn small ghost" type="button" data-action="notification-clear-all" data-kind="${escapeAttr(activeKind)}" ${visibleItems.length ? '' : 'disabled'}>ล้างทั้งหมด</button>
         </footer>
       </section>
@@ -1565,23 +1731,22 @@
     const start = State.dashboardRange.start;
     const end = State.dashboardRange.end;
     const rows = getDemoRows().filter((row) => dateInRange(row.round.created_at?.slice(0, 10), start, end));
-    const allRows = getDemoRows();
-    const chartRows = allRows;
+    const chartRows = rows;
 
     const chartModuleCounts = countByModule(chartRows);
     const chartTotal = chartRows.length;
-    const near7 = allRows
+    const near7 = rows
       .filter((row) => !row.isFinalStatus && row.remainingDays >= 0 && row.remainingDays <= 7)
       .sort((a, b) => a.remainingDays - b.remainingDays);
 
-    const expired = allRows
+    const expired = rows
       .filter((row) => (row.statusSystemKey === 'expired' || row.effectiveStatus === STATUS.EXPIRED))
       .sort((a, b) => a.remainingDays - b.remainingDays);
 
-    const latest = [...allRows]
+    const latest = [...rows]
       .sort((a, b) => new Date(b.round.created_at || 0) - new Date(a.round.created_at || 0));
 
-    const customers = allRows
+    const customers = rows
       .filter((row) => (row.statusSystemKey === 'customer' || row.effectiveStatus === STATUS.CUSTOMER))
       .sort((a, b) => new Date(b.round.updated_at || 0) - new Date(a.round.updated_at || 0));
 
@@ -1592,15 +1757,16 @@
       <section class="card dashboard-control-card">
         <div class="filters compact dashboard-controls">
           <div class="field">
-            <label>เริ่ม</label>
+            <label>วันที่สร้างรายการ: เริ่ม</label>
             <input class="input" type="date" data-dashboard-range="start" value="${escapeAttr(start)}">
           </div>
           <div class="field">
-            <label>สิ้นสุด</label>
+            <label>วันที่สร้างรายการ: สิ้นสุด</label>
             <input class="input" type="date" data-dashboard-range="end" value="${escapeAttr(end)}">
           </div>
           <div class="dashboard-quick-row">
-            ${userIsAdmin() ? '<button class="btn warning" data-action="run-reminder-check">สร้างคิวเตือน 3 วัน</button>' : ''}
+            ${userIsAdmin() ? '<button class="btn warning" data-action="run-reminder-check">ส่งอีเมลเตือน 3 วัน</button>' : ''}
+            <button class="btn ghost" type="button" data-action="dashboard-range-reset">ล้างช่วงวันที่</button>
             ${compactStatCard('เดโมในช่วงที่เลือก', rows.length)}
             ${compactStatCard('ใกล้หมดอายุ 7 วัน', near7.length)}
           </div>
@@ -1632,16 +1798,6 @@
         ${miniTable('รายการล่าสุด', latest, false, 'latest')}
         ${miniTable('เป็นลูกค้าแล้วล่าสุด', customers, false, 'customers')}
       </section>
-    `;
-  }
-
-  function statCard(label, value, hint = '') {
-    return `
-      <div class="card stat">
-        <div class="label">${escapeHTML(label)}</div>
-        <div class="value">${Number(value || 0).toLocaleString('th-TH')}</div>
-        ${hint ? `<div class="hint">${escapeHTML(hint)}</div>` : ''}
-      </div>
     `;
   }
 
@@ -1753,7 +1909,7 @@
     return `
       ${renderTopbar('รายการเดโม', '', `
         <a class="btn primary" href="#demos/new">+ สร้างเดโม</a>
-        <button class="btn secondary" data-action="report-export">ดึงรายงาน</button>
+        <button class="btn secondary" data-action="report-export">ส่งออก Excel</button>
       `)}
       <section class="card">
         <div class="demo-list-toolbar">
@@ -1805,6 +1961,7 @@
             <input type="checkbox" data-filter="nearOnly" ${State.filters.nearOnly ? 'checked' : ''}>
             ใกล้หมดอายุ 7 วัน
           </label>
+          <button class="btn ghost" type="button" data-action="demo-filter-reset">ล้างตัวกรอง</button>
         </div>
         ${isCalendarView
           ? renderDemoCalendar(rows)
@@ -1870,11 +2027,13 @@
             <button class="btn small ghost" type="button" data-action="calendar-month" data-month="${escapeAttr(shiftMonthKey(monthKey, 1))}">ถัดไป</button>
           </div>
         </div>
-        <div class="calendar-weekdays">
-          ${weekdays.map((day) => `<span>${day}</span>`).join('')}
-        </div>
-        <div class="calendar-grid">
-          ${cells.join('')}
+        <div class="calendar-scroll" tabindex="0" aria-label="ปฏิทิน Demo เลื่อนในแนวนอนได้">
+          <div class="calendar-weekdays">
+            ${weekdays.map((day) => `<span>${day}</span>`).join('')}
+          </div>
+          <div class="calendar-grid">
+            ${cells.join('')}
+          </div>
         </div>
         ${monthRows.length ? '' : '<div class="empty">ไม่มี Demo ที่หมดอายุในเดือนนี้ตามตัวกรองปัจจุบัน</div>'}
       </div>
@@ -1904,7 +2063,7 @@
     if (!window.agGrid || typeof window.agGrid.createGrid !== 'function') {
       return `
         <div class="config-warning">
-          โหลด AG Grid ไม่สำเร็จ ระบบจะแสดงตารางสำรองแทน กรุณาตรวจสอบ internet/CDN แล้ว hard refresh อีกครั้ง
+          โหลด AG Grid ไม่สำเร็จ ระบบจะแสดงตารางสำรองแทน กรุณาตรวจสอบว่าอัปโหลดโฟลเดอร์ vendor ครบแล้ว
         </div>
         ${renderLegacyDemoTable(rows)}
       `;
@@ -1932,11 +2091,23 @@
 
     const gridOptions = buildDemoGridOptions(State.demoGridRows || []);
     State.demoGridApi = window.agGrid.createGrid(gridEl, gridOptions);
+    if (State.demoGridColumnState?.length && State.demoGridApi.applyColumnState) {
+      State.demoGridApi.applyColumnState({ state: State.demoGridColumnState, applyOrder: true });
+    }
+    if (State.demoGridFilterModel && State.demoGridApi.setFilterModel) {
+      State.demoGridApi.setFilterModel(State.demoGridFilterModel);
+    }
   }
 
   function destroyDemoGrid() {
     if (!State.demoGridApi || typeof State.demoGridApi.destroy !== 'function') return;
     try {
+      if (State.demoGridApi.getColumnState) {
+        State.demoGridColumnState = State.demoGridApi.getColumnState();
+      }
+      if (State.demoGridApi.getFilterModel) {
+        State.demoGridFilterModel = State.demoGridApi.getFilterModel();
+      }
       State.demoGridApi.destroy();
     } catch (error) {
       console.warn('Destroy AG Grid failed', error);
@@ -1964,7 +2135,7 @@
       animateRows: false,
       rowHeight: 66,
       headerHeight: 46,
-      suppressCellFocus: true,
+      suppressCellFocus: false,
       suppressDragLeaveHidesColumns: true,
       ensureDomOrder: true,
       localeText: getAgGridThaiLocaleText(),
@@ -2088,8 +2259,6 @@
       contactName: row.company.contact_name || '-',
       contactEmailsText: (row.company.contact_emails || []).join(', ') || '-',
       contactEmailsCopy: contactEmailsCopyText(row),
-      passwordsCopy: demoPasswordsCopyText(row),
-      hasAccounts: row.accounts.length > 0,
       status: row.effectiveStatus || '-',
       responsibleName: displayName(row.responsible),
       startDate: row.round.start_date || '',
@@ -2120,7 +2289,6 @@
         <span class="cell-main">${escapeHTML(data.contactEmailsText)}</span>
         <div class="cell-actions">
           <button class="btn tiny ghost" type="button" data-action="copy" data-copy="${escapeAttr(data.contactEmailsCopy)}" ${data.contactEmailsCopy ? '' : 'disabled'}>คัดลอกอีเมล</button>
-          <button class="btn tiny ghost" type="button" data-action="copy" data-copy="${escapeAttr(data.passwordsCopy)}" ${data.hasAccounts ? '' : 'disabled'}>คัดลอกรหัสผ่าน</button>
         </div>
       </div>
     `;
@@ -2185,7 +2353,6 @@
                       <span class="cell-main">${escapeHTML((row.company.contact_emails || []).join(', ') || '-')}</span>
                       <div class="cell-actions">
                         <button class="btn tiny ghost" type="button" data-action="copy" data-copy="${escapeAttr(contactEmailsCopyText(row))}">คัดลอกอีเมล</button>
-                        <button class="btn tiny ghost" type="button" data-action="copy" data-copy="${escapeAttr(demoPasswordsCopyText(row))}" ${row.accounts.length ? '' : 'disabled'}>คัดลอกรหัสผ่าน</button>
                       </div>
                     </div>
                   </td>
@@ -2260,7 +2427,7 @@
 
     return `
       ${renderTopbar('รายงาน', '', `
-        <button class="btn secondary" data-action="company-report-export">ดึงรายงาน</button>
+        <button class="btn secondary" data-action="company-report-export">ส่งออกรายงาน Excel</button>
       `)}
       <section class="report-toolbar card">
         <div class="field search-field">
@@ -2282,63 +2449,6 @@
         ${renderReportCompanyCards(pageRows)}
         ${renderPagination('report', 'companies', pageInfo.page, pageInfo.totalPages, rows.length)}
       </section>
-    `;
-  }
-
-  function reportMetricCard(label, value, hint = '') {
-    return `
-      <div class="report-metric">
-        <span>${escapeHTML(label)}</span>
-        <strong>${Number(value || 0).toLocaleString('th-TH')}</strong>
-        <small>${escapeHTML(hint)}</small>
-      </div>
-    `;
-  }
-
-  function renderReportHighlightList(rows) {
-    if (!rows.length) {
-      return '<div class="empty compact-empty">ยังไม่มีบันทึกล่าสุด</div>';
-    }
-
-    return `
-      <div class="report-highlight-list">
-        ${rows.map((row) => `
-          <a class="report-highlight-item" href="#demos/${row.round.id}">
-            <div class="report-highlight-head">
-              <strong>${escapeHTML(row.company.company_name)}</strong>
-              <span>${formatDateTime(row.latestLog.created_at)}</span>
-            </div>
-            <p>${escapeHTML(row.latestLog.message)}</p>
-          </a>
-        `).join('')}
-      </div>
-    `;
-  }
-
-  function renderReportActionList(rows) {
-    if (!rows.length) {
-      return '<div class="empty compact-empty">ไม่มีรายการเร่งด่วนในตอนนี้</div>';
-    }
-
-    return `
-      <div class="report-action-list">
-        ${rows.map((row) => {
-          const urgency = (row.statusSystemKey === 'expired' || row.effectiveStatus === STATUS.EXPIRED)
-            ? 'หมดอายุแล้ว'
-            : row.remainingDays >= 0 && row.remainingDays <= 7
-              ? `เหลือ ${formatRemaining(row.remainingDays)}`
-              : 'มีบันทึกล่าสุด';
-          return `
-            <a class="report-action-item" href="#demos/${row.round.id}">
-              <div>
-                <strong>${escapeHTML(row.company.company_name)}</strong>
-                <span>${escapeHTML(row.latestLog?.message || 'ยังไม่มีบันทึก')}</span>
-              </div>
-              <em>${escapeHTML(urgency)}</em>
-            </a>
-          `;
-        }).join('')}
-      </div>
     `;
   }
 
@@ -2394,6 +2504,16 @@
     const round = source?.round || {};
     const title = editRow ? 'แก้ไขเดโม' : renewRow ? 'ต่ออายุเดโม' : 'สร้างเดโม';
 
+    if (source && !State.sensitiveAccountsByRound.has(source.round.id)) {
+      return `
+        ${renderTopbar(title, '', '<a class="icon-button back-button" href="#demos" title="กลับ" aria-label="กลับ">←</a>')}
+        <section class="loading-card" role="status">
+          <div class="spinner" aria-hidden="true"></div>
+          <p>กำลังโหลดข้อมูลบัญชีอย่างปลอดภัย...</p>
+        </section>
+      `;
+    }
+
     const startDate = editRow ? round.start_date : todayISO();
     const endDate = editRow ? round.end_date : addDaysISO(todayISO(), 14);
     const renewalNo = editRow ? (round.renewal_no || 0) : renewRow ? (round.renewal_no || 0) + 1 : 0;
@@ -2419,7 +2539,12 @@
       ...(draft || {}),
       contact_emails: draft?.contact_emails || baseValues.contact_emails,
       modules: draft?.modules || baseValues.modules,
-      accounts: draft?.accounts?.length ? draft.accounts : baseValues.accounts
+      accounts: draft?.accounts?.length
+        ? draft.accounts.map((account, index) => ({
+            ...account,
+            password: baseValues.accounts[index]?.password || ''
+          }))
+        : baseValues.accounts
     };
 
     const selectedModuleIds = values.modules || [];
@@ -2432,7 +2557,7 @@
       `)}
       ${draft ? `
         <div class="config-warning">
-          กู้คืนข้อมูลร่างที่ยังไม่ได้บันทึกแล้ว
+          กู้คืนข้อมูลร่างที่ยังไม่ได้บันทึกแล้ว ระบบไม่เก็บรหัสผ่านไว้ในข้อมูลร่าง กรุณาตรวจสอบรหัสผ่านก่อนบันทึก
           <button class="btn small ghost" type="button" data-action="draft-clear" data-draft-key="${escapeAttr(draftKey)}">ล้างข้อมูลร่าง</button>
         </div>
       ` : ''}
@@ -2445,14 +2570,14 @@
           <div class="grid two">
             <div class="field">
               <label>ชื่อบริษัท <span class="required">*</span></label>
-              <input class="input" name="company_name" list="company-list" value="${escapeAttr(values.company_name)}" required>
+              <input class="input" name="company_name" list="company-list" value="${escapeAttr(values.company_name)}" maxlength="200" required>
               <datalist id="company-list">
                 ${State.companies.map((item) => `<option value="${escapeAttr(item.company_name)}"></option>`).join('')}
               </datalist>
             </div>
             <div class="field">
               <label>ชื่อผู้ติดต่อ <span class="required">*</span></label>
-              <input class="input" name="contact_name" value="${escapeAttr(values.contact_name)}" required>
+              <input class="input" name="contact_name" value="${escapeAttr(values.contact_name)}" maxlength="200" required>
             </div>
           </div>
           <div class="field">
@@ -2483,7 +2608,7 @@
             </div>
             <div class="field">
               <label>วันที่สิ้นสุด <span class="required">*</span></label>
-              <input class="input" type="date" name="end_date" value="${escapeAttr(values.end_date)}" required>
+              <input class="input" type="date" name="end_date" value="${escapeAttr(values.end_date)}" ${isFinalStatusValue(values.status_id) ? 'readonly' : ''} required>
             </div>
           </div>
           <input type="hidden" name="renewal_no" value="${escapeAttr(String(values.renewal_no || 0))}">
@@ -2523,15 +2648,15 @@
       <div class="account-row" data-account-row>
         <div class="field">
           <label>อีเมลผู้ใช้งาน <span class="required">*</span></label>
-          <input class="input" type="email" name="account_login_email" value="${escapeAttr(account.login_email || '')}" required>
+          <input class="input" type="email" name="account_login_email" value="${escapeAttr(account.login_email || '')}" maxlength="320" required>
         </div>
         <div class="field">
           <label>รหัสผ่าน <span class="required">*</span></label>
-          <input class="input" type="text" name="account_password" value="${escapeAttr(account.password || '')}" required autocomplete="off">
+          <input class="input" type="password" name="account_password" value="${escapeAttr(account.password || '')}" minlength="1" maxlength="256" required autocomplete="new-password">
         </div>
         <div class="field">
           <label>โน้ตบัญชี</label>
-          <input class="input" name="account_note" value="${escapeAttr(account.note || '')}">
+          <input class="input" name="account_note" value="${escapeAttr(account.note || '')}" maxlength="500">
         </div>
         <button class="btn danger" type="button" data-action="account-remove">ลบ</button>
       </div>
@@ -2587,7 +2712,7 @@
       <section class="grid two content-gap">
         <div class="card">
           <div class="section-title"><h2>บัญชีเดโม</h2></div>
-          ${renderAccounts(row.accounts)}
+          ${renderAccounts(row.accounts, row.round.id)}
         </div>
         <div class="card">
           <div class="section-title"><h2>ประวัติรอบเดโม</h2></div>
@@ -2624,7 +2749,7 @@
         <form data-action="activity-add" data-company-id="${row.company.id}" data-round-id="${row.round.id}" class="log-form">
           <div class="field">
             <label>ข้อความบันทึก <span class="required">*</span></label>
-            <textarea class="textarea activity-message-input" name="message" rows="4" placeholder="บันทึกความคืบหน้าของบริษัทนี้ กด Enter เพื่อขึ้นบรรทัดใหม่" required></textarea>
+            <textarea class="textarea activity-message-input" name="message" rows="4" maxlength="5000" placeholder="บันทึกความคืบหน้าของบริษัทนี้ กด Enter เพื่อขึ้นบรรทัดใหม่" required></textarea>
             <p class="muted small-text">กด Enter เพื่อขึ้นบรรทัดใหม่ และกดปุ่มเพิ่มบันทึกเพื่อบันทึกเท่านั้น</p>
           </div>
           <button class="btn primary" type="submit">เพิ่มบันทึก</button>
@@ -2634,7 +2759,10 @@
     `;
   }
 
-  function renderAccounts(accounts) {
+  function renderAccounts(accounts, roundId) {
+    if (!State.sensitiveAccountsByRound.has(roundId)) {
+      return '<div class="empty" role="status">กำลังโหลดข้อมูลบัญชีอย่างปลอดภัย...</div>';
+    }
     if (!accounts.length) return '<div class="empty">ไม่มีบัญชีเดโม</div>';
 
     return `
@@ -2692,7 +2820,7 @@
     return `
       ${renderTopbar('ตั้งค่าระบบ')}
       <section class="card">
-        <div class="admin-tabs">
+        <div class="admin-tabs" role="tablist" aria-label="หมวดการตั้งค่าระบบ">
           ${adminTab('users', 'ผู้ใช้ระบบ')}
           ${adminTab('responsible', 'ผู้รับผิดชอบ')}
           ${adminTab('modules', 'โมดูล')}
@@ -2713,7 +2841,7 @@
   }
 
   function adminTab(key, label) {
-    return `<button class="admin-tab ${State.adminTab === key ? 'active' : ''}" data-action="admin-tab" data-tab="${key}">${escapeHTML(label)}</button>`;
+    return `<button class="admin-tab ${State.adminTab === key ? 'active' : ''}" type="button" role="tab" aria-selected="${State.adminTab === key}" data-action="admin-tab" data-tab="${key}">${escapeHTML(label)}</button>`;
   }
 
   function renderAdminUsers() {
@@ -2731,6 +2859,7 @@
               <th>สิทธิ์</th>
               <th>สถานะ</th>
               <th>การใช้งาน</th>
+              <th>การจัดการ</th>
             </tr>
           </thead>
           <tbody>
@@ -2807,6 +2936,7 @@
               <th>เบอร์โทร</th>
               <th>สถานะ</th>
               <th>การใช้งาน</th>
+              <th>การจัดการ</th>
             </tr>
           </thead>
           <tbody>
@@ -3007,11 +3137,11 @@
             <input type="hidden" name="id" value="${template.id}">
             <div class="field">
               <label>หัวข้ออีเมล <span class="required">*</span></label>
-              <input class="input" name="subject" value="${escapeAttr(template.subject || '')}" required>
+              <input class="input" name="subject" maxlength="300" value="${escapeAttr(template.subject || '')}" required>
             </div>
             <div class="field">
               <label>เนื้อหาอีเมล <span class="required">*</span></label>
-              <textarea class="textarea" name="body" rows="14" required>${escapeHTML(template.body || '')}</textarea>
+              <textarea class="textarea" name="body" rows="14" maxlength="20000" required>${escapeHTML(template.body || '')}</textarea>
             </div>
             <button class="btn primary" type="submit">บันทึกเทมเพลต</button>
           </form>
@@ -3032,7 +3162,7 @@
         </div>
         <div class="field">
           <label>Google Apps Script Web App URL</label>
-          <input class="input" name="apps_script_url" value="${escapeAttr(appsScriptUrl)}" placeholder="https://script.google.com/macros/s/.../exec">
+          <input class="input" type="url" name="apps_script_url" maxlength="500" value="${escapeAttr(appsScriptUrl)}" placeholder="https://script.google.com/macros/s/.../exec">
         </div>
         <button class="btn primary" type="submit">บันทึกการตั้งค่า</button>
       </form>
@@ -3095,82 +3225,40 @@
 
     validateDemoForm(form, contactEmails, selectedModules, accounts);
 
-    let companyId;
-    const companyName = form.company_name.value.trim();
-    const existingByName = State.companies.find((company) => normalize(company.company_name) === normalize(companyName));
-    const sourceRow = editId ? getDemoRow(editId) : null;
-
-    if (sourceRow) {
-      companyId = sourceRow.company.id;
-      const { error } = await State.sb.from('companies').update({
-        company_name: companyName,
-        contact_name: form.contact_name.value.trim(),
-        contact_emails: contactEmails,
-        updated_at: new Date().toISOString()
-      }).eq('id', companyId);
-      if (error) throw error;
-    } else if (existingByName) {
-      companyId = existingByName.id;
-      const { error } = await State.sb.from('companies').update({
-        contact_name: form.contact_name.value.trim(),
-        contact_emails: contactEmails,
-        updated_at: new Date().toISOString()
-      }).eq('id', companyId);
-      if (error) throw error;
-    } else {
-      const { data, error } = await State.sb.from('companies').insert({
-        company_name: companyName,
-        contact_name: form.contact_name.value.trim(),
-        contact_emails: contactEmails,
-        created_by: State.profile.id
-      }).select().single();
-      if (error) throw error;
-      companyId = data.id;
-    }
-
     const statusId = form.status_id.value;
     const statusMeta = getStatusMetaById(statusId);
     if (!statusMeta) throw new Error('กรุณาเลือกสถานะที่ถูกต้อง');
-    const status = statusMeta.name;
-    const roundPayload = {
-      company_id: companyId,
-      status,
-      status_id: statusId,
-      responsible_person_id: form.responsible_person_id.value,
-      responsible_user_id: State.profile.id,
-      start_date: form.start_date.value,
-      end_date: isFinalStatusMeta(statusMeta) ? todayISO() : form.end_date.value,
-      renewal_no: Number(form.renewal_no.value || 0),
-      updated_at: new Date().toISOString()
-    };
+    const sourceRow = editId
+      ? getDemoRow(editId)
+      : renewFromId
+        ? getDemoRow(renewFromId)
+        : null;
+    const mode = editId ? 'edit' : renewFromId ? 'renew' : 'create';
+    const effectiveEndDate = isFinalStatusMeta(statusMeta) ? todayISO() : form.end_date.value;
 
-    let roundId = editId;
-    if (editId) {
-      const { error } = await State.sb.from('demo_rounds').update(roundPayload).eq('id', editId);
-      if (error) throw error;
-    } else {
-      if (renewFromId) {
-        await closeRenewedRound(renewFromId);
-      }
+    const { data, error } = await State.sb.rpc('save_demo_round_transaction', {
+      p_mode: mode,
+      p_round_id: editId || null,
+      p_renew_from_round_id: renewFromId || null,
+      p_company_id: sourceRow?.company?.id || null,
+      p_company_name: form.company_name.value.trim(),
+      p_contact_name: form.contact_name.value.trim(),
+      p_contact_emails: contactEmails,
+      p_status_id: statusId,
+      p_responsible_person_id: form.responsible_person_id.value,
+      p_start_date: form.start_date.value,
+      p_end_date: effectiveEndDate,
+      p_renewal_no: Number(form.renewal_no.value || 0),
+      p_module_ids: selectedModules,
+      p_accounts: accounts,
+      p_expected_updated_at: sourceRow?.round?.updated_at || null,
+      p_expected_company_updated_at: sourceRow?.company?.updated_at || null
+    });
+    if (error) throw demoSaveError(error);
+    if (!data?.ok || !data.round_id) throw new Error('บันทึกเดโมไม่สำเร็จ กรุณาลองใหม่');
 
-      const { data, error } = await State.sb.from('demo_rounds').insert({
-        ...roundPayload,
-        created_by: State.profile.id,
-        renewed_from_round_id: renewFromId || null,
-        // รอบใหม่รวมถึงรอบต่ออายุมีวงจรการส่งอีเมลของตัวเอง
-        // ผู้ใช้ต้องเป็นผู้กดส่งอีเมลรอบใหม่ด้วยตนเอง
-        first_email_sent_at: null,
-        reminder_email_sent_at: null
-      }).select().single();
-      if (error) throw error;
-      roundId = data.id;
-    }
-
-    await replaceRoundModules(roundId, selectedModules);
-    await replaceAccounts(roundId, accounts);
-
-    // v1.4.5: Demo create/edit form must not create activity logs.
-    // Users add progress notes explicitly from the demo detail activity section.
+    const roundId = data.round_id;
+    State.sensitiveAccountsByRound.delete(editId || renewFromId || roundId);
 
     clearDemoDraft(form.dataset.draftKey || '');
     await loadAllData();
@@ -3209,8 +3297,12 @@
   }
 
   function validateDemoForm(form, emails, modules, accounts) {
-    if (!form.company_name.value.trim()) throw new Error('กรุณากรอกชื่อบริษัท');
-    if (!form.contact_name.value.trim()) throw new Error('กรุณากรอกชื่อผู้ติดต่อ');
+    const companyName = form.company_name.value.trim();
+    const contactName = form.contact_name.value.trim();
+    if (!companyName) throw new Error('กรุณากรอกชื่อบริษัท');
+    if (companyName.length > 200) throw new Error('ชื่อบริษัทยาวเกิน 200 ตัวอักษร');
+    if (!contactName) throw new Error('กรุณากรอกชื่อผู้ติดต่อ');
+    if (contactName.length > 200) throw new Error('ชื่อผู้ติดต่อยาวเกิน 200 ตัวอักษร');
     if (!emails.length) throw new Error('กรุณาเพิ่มอีเมลผู้ติดต่ออย่างน้อย 1 รายการ');
     const invalidEmails = emails.filter((email) => !isEmail(email));
     if (invalidEmails.length) throw new Error(`รูปแบบอีเมลไม่ถูกต้อง: ${invalidEmails.join(', ')}`);
@@ -3220,28 +3312,13 @@
     for (const account of accounts) {
       if (!isEmail(account.login_email || '')) throw new Error(`อีเมลบัญชีเดโมไม่ถูกต้อง: ${account.login_email || '-'}`);
       if (!account.password) throw new Error(`กรุณากรอกรหัสผ่านของ ${account.login_email}`);
+      if (account.login_email.length > 320) throw new Error(`อีเมลบัญชีเดโมยาวเกิน 320 ตัวอักษร: ${account.login_email}`);
+      if (account.password.length > 256) throw new Error(`รหัสผ่านของ ${account.login_email} ยาวเกิน 256 ตัวอักษร`);
+      if ((account.note || '').length > 500) throw new Error(`โน้ตของ ${account.login_email} ยาวเกิน 500 ตัวอักษร`);
     }
-    if (form.end_date.value < form.start_date.value) throw new Error('วันที่สิ้นสุดต้องไม่ก่อนวันที่เริ่ม');
-  }
-
-  async function replaceRoundModules(roundId, moduleIds) {
-    const { error: deleteError } = await State.sb.from('demo_round_modules').delete().eq('demo_round_id', roundId);
-    if (deleteError) throw deleteError;
-
-    if (!moduleIds.length) return;
-    const rows = moduleIds.map((module_id) => ({ demo_round_id: roundId, module_id }));
-    const { error } = await State.sb.from('demo_round_modules').insert(rows);
-    if (error) throw error;
-  }
-
-  async function replaceAccounts(roundId, accounts) {
-    const { error: deleteError } = await State.sb.from('demo_accounts').delete().eq('demo_round_id', roundId);
-    if (deleteError) throw deleteError;
-
-    if (!accounts.length) return;
-    const rows = accounts.map((account) => ({ ...account, demo_round_id: roundId }));
-    const { error } = await State.sb.from('demo_accounts').insert(rows);
-    if (error) throw error;
+    const statusMeta = getStatusMetaById(form.status_id.value);
+    const effectiveEndDate = isFinalStatusMeta(statusMeta) ? todayISO() : form.end_date.value;
+    if (effectiveEndDate < form.start_date.value) throw new Error('วันที่สิ้นสุดต้องไม่ก่อนวันที่เริ่ม');
   }
 
   async function closeDemoRound(roundId) {
@@ -3258,44 +3335,22 @@
 
     if (!window.confirm(`ปิดรายการเดโมของ ${row.company.company_name} หรือไม่?`)) return;
 
-    const closedStatus = getSystemStatusMeta('closed') || getStatusMetaByName(STATUS.CLOSED);
-    const { error } = await State.sb.from('demo_rounds').update({
-      status: closedStatus?.name || STATUS.CLOSED,
-      status_id: closedStatus?.id || null,
-      updated_at: new Date().toISOString()
-    }).eq('id', roundId);
-    if (error) throw error;
+    const { data, error } = await State.sb.rpc('close_demo_round_transaction', {
+      p_round_id: roundId,
+      p_expected_updated_at: row.round.updated_at || null
+    });
+    if (error) throw demoSaveError(error);
+    if (!data?.ok) throw new Error('ปิดรายการไม่สำเร็จ กรุณาลองใหม่');
 
-    await insertActivityLog({
-      company_id: row.company.id,
-      demo_round_id: row.round.id,
-      log_type: 'เปลี่ยนสถานะ',
-      source: 'system',
-      message: 'ปิดรายการเดโม'
-    }).catch(() => undefined);
-
-    // ปิดเฉพาะสถานะและเก็บประวัติ activity log ทั้งหมดไว้
     await loadAllData();
     render();
     toast('ปิดรายการแล้ว', 'success');
   }
 
-  async function closeRenewedRound(roundId) {
-    const closedStatus = getSystemStatusMeta('closed') || getStatusMetaByName(STATUS.CLOSED);
-    const { error } = await State.sb.from('demo_rounds').update({
-      status: closedStatus?.name || STATUS.CLOSED,
-      status_id: closedStatus?.id || null,
-      end_date: todayISO(),
-      updated_at: new Date().toISOString()
-    }).eq('id', roundId);
-    if (error) throw error;
-
-    // ปิดรอบเดิมจากการต่ออายุโดยไม่ลบประวัติ activity log
-  }
-
   async function addActivityLog(form) {
     const message = form.message.value.trim();
     if (!message) throw new Error('กรุณากรอกรายละเอียดบันทึก');
+    if (message.length > 5000) throw new Error('รายละเอียดบันทึกยาวเกิน 5,000 ตัวอักษร');
 
     await insertActivityLog({
       company_id: form.dataset.companyId,
@@ -3341,7 +3396,7 @@
           <input type="hidden" name="id" value="${escapeAttr(log.id)}">
           <div class="field">
             <label>ข้อความบันทึก <span class="required">*</span></label>
-            <textarea class="textarea activity-message-input" name="message" rows="6" required>${escapeHTML(log.message)}</textarea>
+            <textarea class="textarea activity-message-input" name="message" rows="6" maxlength="5000" required>${escapeHTML(log.message)}</textarea>
             <p class="muted small-text">กด Enter เพื่อขึ้นบรรทัดใหม่</p>
           </div>
         </main>
@@ -3364,6 +3419,7 @@
 
     const message = form.message.value.trim();
     if (!message) throw new Error('ข้อความบันทึกห้ามว่าง');
+    if (message.length > 5000) throw new Error('ข้อความบันทึกยาวเกิน 5,000 ตัวอักษร');
 
     const { error } = await State.sb.rpc('update_latest_activity_log_message', {
       log_id: id,
@@ -3465,7 +3521,119 @@
     `);
   }
 
+  function getAppsScriptEndpoint() {
+    const endpoint = String(State.settings.apps_script_url || APP_CONFIG.APPS_SCRIPT_URL || '').trim();
+    if (!endpoint) {
+      throw new Error('ยังไม่ได้ตั้ง Google Apps Script Web App URL ในตั้งค่าระบบ');
+    }
+
+    let url;
+    try {
+      url = new URL(endpoint);
+    } catch {
+      throw new Error('Google Apps Script Web App URL ไม่ถูกต้อง');
+    }
+
+    if (
+      url.protocol !== 'https:'
+      || url.hostname !== 'script.google.com'
+      || !/^\/macros\/s\/[^/]+\/exec$/.test(url.pathname)
+    ) {
+      throw new Error('อนุญาตเฉพาะ URL รูปแบบ https://script.google.com/macros/s/.../exec');
+    }
+    return url.toString();
+  }
+
+  function buildEmailLogPayload(row, type) {
+    const tpl = getTemplate(type);
+    const rendered = renderEmail(row, tpl);
+    const responsibleEmail = row.responsible?.email ? [row.responsible.email] : [];
+    const fixedCc = Array.isArray(State.settings.fixed_cc_emails) ? State.settings.fixed_cc_emails : [];
+    const cc = unique([...responsibleEmail, ...fixedCc].filter(Boolean));
+    return {
+      template: tpl,
+      payload: {
+        demo_round_id: row.round.id,
+        email_type: type,
+        to_emails: row.company.contact_emails || [],
+        cc_emails: cc,
+        subject: rendered.subject,
+        body: rendered.body,
+        sent_status: 'queued',
+        sent_by: State.profile.id,
+        sent_at: null,
+        error_message: null,
+        idempotency_key: `demo-crm:${row.round.id}:${type}`
+      }
+    };
+  }
+
+  async function queueEmailOnce(row, type) {
+    const email = buildEmailLogPayload(row, type);
+    let { data, error } = await State.sb
+      .from('email_logs')
+      .insert(email.payload)
+      .select('id,sent_status,sent_at,error_message,idempotency_key')
+      .single();
+
+    if (error && String(error.code || '') !== '23505') throw error;
+
+    if (error) {
+      const existing = await State.sb
+        .from('email_logs')
+        .select('id,sent_status,sent_at,error_message,idempotency_key')
+        .eq('idempotency_key', email.payload.idempotency_key)
+        .single();
+      if (existing.error) throw existing.error;
+      data = existing.data;
+
+      if (data.sent_status !== 'sent' && !data.sent_at) {
+        const refreshed = await State.sb
+          .from('email_logs')
+          .update(email.payload)
+          .eq('id', data.id)
+          .select('id,sent_status,sent_at,error_message,idempotency_key')
+          .single();
+        if (refreshed.error) throw refreshed.error;
+        data = refreshed.data;
+      }
+    }
+
+    return { log: data, template: email.template };
+  }
+
+  async function dispatchEmailLog(emailLogId, endpoint) {
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      mode: 'cors',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({
+        email_log_id: emailLogId,
+        access_token: State.session?.access_token || '',
+        app_version: APP_VERSION
+      })
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok || result.ok === false || result.sent !== true) {
+      throw new Error(result.error || `Apps Script HTTP ${response.status}`);
+    }
+    return result;
+  }
+
+  async function markRoundEmailSent(roundId, type) {
+    const field = type === 'expiry_reminder_email'
+      ? 'reminder_email_sent_at'
+      : 'first_email_sent_at';
+    const { error } = await State.sb
+      .from('demo_rounds')
+      .update({ [field]: new Date().toISOString() })
+      .eq('id', roundId);
+    if (error) throw error;
+  }
+
   async function sendPreviewEmail(roundId, type = 'first_demo_email') {
+    const endpoint = getAppsScriptEndpoint();
+    await ensureSensitiveAccounts(roundId);
     const row = getDemoRow(roundId);
     if (!row) return;
     if (type === 'first_demo_email' && !canShowFirstEmailAction(row)) {
@@ -3473,84 +3641,37 @@
       return;
     }
 
-    const tpl = getTemplate(type);
-    const rendered = renderEmail(row, tpl);
-    const responsibleEmail = row.responsible?.email ? [row.responsible.email] : [];
-    const fixedCc = Array.isArray(State.settings.fixed_cc_emails) ? State.settings.fixed_cc_emails : [];
-    const cc = unique([...responsibleEmail, ...fixedCc].filter(Boolean));
-
-    const { data, error } = await State.sb.from('email_logs').insert({
-      demo_round_id: row.round.id,
-      email_type: type,
-      to_emails: row.company.contact_emails || [],
-      cc_emails: cc,
-      subject: rendered.subject,
-      body: rendered.body,
-      sent_status: 'queued',
-      sent_by: State.profile.id
-    }).select().single();
-    if (error) throw error;
-
-    let status = 'queued';
-    let errorMessage = null;
-    const endpoint = State.settings.apps_script_url || APP_CONFIG.APPS_SCRIPT_URL;
-
-    if (endpoint) {
-      try {
-        const res = await fetch(endpoint, {
-          method: 'POST',
-          mode: 'cors',
-          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-          body: JSON.stringify({
-            email_log_id: data.id,
-            access_token: State.session?.access_token || '',
-            app_version: APP_VERSION
-          })
-        });
-        const result = await res.json().catch(() => ({}));
-        if (!res.ok || result.ok === false) {
-          throw new Error(result.error || `Apps Script HTTP ${res.status}`);
-        }
-        status = 'sent';
-      } catch (err) {
-        status = 'error';
-        errorMessage = safeError(err);
-      }
+    const queued = await queueEmailOnce(row, type);
+    const alreadySent = queued.log.sent_status === 'sent' || Boolean(queued.log.sent_at);
+    if (!alreadySent) {
+      await dispatchEmailLog(queued.log.id, endpoint);
     }
+    await markRoundEmailSent(row.round.id, type);
 
-    const updatePayload = {
-      sent_status: status,
-      error_message: errorMessage,
-      sent_at: status === 'sent' ? new Date().toISOString() : null
-    };
-    await State.sb.from('email_logs').update(updatePayload).eq('id', data.id);
-
-    if (type === 'first_demo_email' && status !== 'error') {
-      await State.sb.from('demo_rounds').update({ first_email_sent_at: new Date().toISOString() }).eq('id', row.round.id);
-    }
-
-    await insertActivityLog({
+    const auditSaved = await insertActivityLog({
       company_id: row.company.id,
       demo_round_id: row.round.id,
       log_type: 'ส่งอีเมล',
       source: 'system',
-      message: status === 'sent'
-        ? `ส่งอีเมล ${tpl.name || type} แล้ว`
-        : status === 'queued'
-          ? `บันทึกคิวอีเมล ${tpl.name || type} แล้ว`
-          : `ส่งอีเมลไม่สำเร็จ: ${errorMessage}`
-    }).catch(() => undefined);
+      message: alreadySent
+        ? `ตรวจพบว่าอีเมล ${queued.template.name || type} ถูกส่งแล้ว จึงไม่ส่งซ้ำ`
+        : `ส่งอีเมล ${queued.template.name || type} แล้ว`
+    }).then(() => true).catch((error) => {
+      console.error('Email sent but activity log failed', error);
+      return false;
+    });
 
     closeModal();
     await loadAllData();
     render();
-
-    if (status === 'sent') toast('ส่งอีเมลสำเร็จ', 'success');
-    else if (status === 'queued') toast('บันทึกคิวอีเมลแล้ว', 'warning');
-    else toast(`ส่งอีเมลไม่สำเร็จ: ${errorMessage}`, 'error');
+    toast(
+      `${alreadySent ? 'อีเมลถูกส่งไปแล้ว ระบบไม่ได้ส่งซ้ำ' : 'ส่งอีเมลสำเร็จ'}${auditSaved ? '' : ' แต่บันทึก Activity Log ไม่สำเร็จ'}`,
+      auditSaved ? 'success' : 'warning'
+    );
   }
 
   async function queueReminderEmails() {
+    const endpoint = getAppsScriptEndpoint();
     const dueRows = getDemoRows().filter((row) => {
       return !row.round.reminder_email_sent_at
         && !row.isFinalStatus
@@ -3562,38 +3683,45 @@
       return;
     }
 
+    let sentCount = 0;
+    let alreadySentCount = 0;
+    const failures = [];
+
     for (const row of dueRows) {
-      const tpl = getTemplate('expiry_reminder_email');
-      const rendered = renderEmail(row, tpl);
-      const responsibleEmail = row.responsible?.email ? [row.responsible.email] : [];
-      const fixedCc = Array.isArray(State.settings.fixed_cc_emails) ? State.settings.fixed_cc_emails : [];
-      const cc = unique([...responsibleEmail, ...fixedCc].filter(Boolean));
-
-      const { error } = await State.sb.from('email_logs').insert({
-        demo_round_id: row.round.id,
-        email_type: 'expiry_reminder_email',
-        to_emails: row.company.contact_emails || [],
-        cc_emails: cc,
-        subject: rendered.subject,
-        body: rendered.body,
-        sent_status: 'queued',
-        sent_by: State.profile.id
-      });
-      if (error) throw error;
-
-      await State.sb.from('demo_rounds').update({ reminder_email_sent_at: new Date().toISOString() }).eq('id', row.round.id);
-      await insertActivityLog({
-        company_id: row.company.id,
-        demo_round_id: row.round.id,
-        log_type: 'ส่งอีเมล',
-        source: 'system',
-        message: 'สร้างคิวอีเมลเตือนก่อนหมดอายุ 3 วัน'
-      }).catch(() => undefined);
+      try {
+        await ensureSensitiveAccounts(row.round.id);
+        const refreshedRow = getDemoRow(row.round.id);
+        const queued = await queueEmailOnce(refreshedRow, 'expiry_reminder_email');
+        const alreadySent = queued.log.sent_status === 'sent' || Boolean(queued.log.sent_at);
+        if (!alreadySent) {
+          await dispatchEmailLog(queued.log.id, endpoint);
+          sentCount += 1;
+        } else {
+          alreadySentCount += 1;
+        }
+        await markRoundEmailSent(row.round.id, 'expiry_reminder_email');
+        await insertActivityLog({
+          company_id: row.company.id,
+          demo_round_id: row.round.id,
+          log_type: 'ส่งอีเมล',
+          source: 'system',
+          message: alreadySent
+            ? 'ตรวจพบว่าอีเมลเตือน 3 วันถูกส่งแล้ว จึงไม่ส่งซ้ำ'
+            : 'ส่งอีเมลเตือนก่อนหมดอายุ 3 วันแล้ว'
+        }).catch((error) => console.error('Reminder activity log failed', error));
+      } catch (error) {
+        failures.push(`${row.company.company_name}: ${safeError(error)}`);
+      }
     }
 
     await loadAllData();
     render();
-    toast(`สร้างคิวอีเมลเตือนแล้ว ${dueRows.length} รายการ`, 'success');
+    if (failures.length) {
+      toast(`ส่งสำเร็จ ${sentCount} รายการ, เคยส่งแล้ว ${alreadySentCount} รายการ, ไม่สำเร็จ ${failures.length} รายการ`, 'warning');
+      console.error('Reminder failures', failures);
+    } else {
+      toast(`ส่งอีเมลเตือนสำเร็จ ${sentCount} รายการ${alreadySentCount ? ` · ไม่ส่งซ้ำ ${alreadySentCount} รายการ` : ''}`, 'success');
+    }
   }
 
   async function saveResponsiblePerson(form) {
@@ -3924,16 +4052,23 @@ async function saveModule(form) {
     if (invalid.length) throw new Error(`อีเมล CC ไม่ถูกต้อง: ${invalid.join(', ')}`);
 
     const appsScriptUrl = form.apps_script_url.value.trim();
+    if (appsScriptUrl) {
+      const originalSettings = State.settings;
+      try {
+        State.settings = { ...State.settings, apps_script_url: appsScriptUrl };
+        getAppsScriptEndpoint();
+      } finally {
+        State.settings = originalSettings;
+      }
+    }
 
     const rows = [
       { key: 'fixed_cc_emails', value: fixedCc, updated_by: State.profile.id },
       { key: 'apps_script_url', value: appsScriptUrl, updated_by: State.profile.id }
     ];
 
-    for (const row of rows) {
-      const { error } = await State.sb.from('settings').upsert(row, { onConflict: 'key' });
-      if (error) throw error;
-    }
+    const { error } = await State.sb.from('settings').upsert(rows, { onConflict: 'key' });
+    if (error) throw error;
 
     await loadAllData();
     render();
@@ -4011,7 +4146,18 @@ async function saveModule(form) {
   }
 
   function getAllDemoRows() {
+    if (State.demoRowsCache?.revision === State.dataRevision) {
+      return State.demoRowsCache.rows;
+    }
+
     const accumulatedDaysByCompany = new Map();
+    const companyById = new Map(State.companies.map((item) => [item.id, item]));
+    const moduleById = new Map(State.modules.map((item) => [item.id, item]));
+    const responsibleById = new Map(State.responsiblePeople.map((item) => [item.id, item]));
+    const profileById = new Map(State.profiles.map((item) => [item.id, item]));
+    const moduleIdsByRound = new Map();
+    const accountsByRound = new Map();
+    const logsByCompany = new Map();
 
     for (const round of State.rounds) {
       if (!round?.company_id) continue;
@@ -4022,21 +4168,38 @@ async function saveModule(form) {
       );
     }
 
-    return State.rounds
+    for (const link of State.roundModules) {
+      if (!moduleIdsByRound.has(link.demo_round_id)) moduleIdsByRound.set(link.demo_round_id, []);
+      moduleIdsByRound.get(link.demo_round_id).push(link.module_id);
+    }
+
+    for (const account of State.accounts) {
+      if (!accountsByRound.has(account.demo_round_id)) accountsByRound.set(account.demo_round_id, []);
+      accountsByRound.get(account.demo_round_id).push(account);
+    }
+
+    for (const log of State.activityLogs) {
+      if (!isManualLog(log)) continue;
+      if (!logsByCompany.has(log.company_id)) logsByCompany.set(log.company_id, []);
+      logsByCompany.get(log.company_id).push(log);
+    }
+    for (const logs of logsByCompany.values()) {
+      logs.sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
+    }
+
+    const rows = State.rounds
       .map((round) => {
-        const company = State.companies.find((item) => item.id === round.company_id);
+        const company = companyById.get(round.company_id);
         if (!company) return null;
 
-        const roundModuleIds = State.roundModules
-          .filter((item) => item.demo_round_id === round.id)
-          .map((item) => item.module_id);
-
-        const modules = State.modules.filter((module) => roundModuleIds.includes(module.id));
-        const accounts = State.accounts.filter((account) => account.demo_round_id === round.id);
-        const responsible = findResponsiblePerson(round.responsible_person_id) || findProfile(round.responsible_user_id);
-        const logs = State.activityLogs
-          .filter((log) => log.company_id === company.id && isManualLog(log))
-          .sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
+        const modules = (moduleIdsByRound.get(round.id) || [])
+          .map((moduleId) => moduleById.get(moduleId))
+          .filter(Boolean);
+        const accounts = accountsByRound.get(round.id) || [];
+        const responsible = responsibleById.get(round.responsible_person_id)
+          || profileById.get(round.responsible_user_id)
+          || null;
+        const logs = logsByCompany.get(company.id) || [];
         const statusMeta = getComputedStatusMeta(round);
         const effectiveStatus = statusMeta?.name || computeStatus(round);
         const effectiveStatusId = statusMeta?.id || round.status_id || '';
@@ -4064,9 +4227,16 @@ async function saveModule(form) {
         };
       })
       .filter(Boolean);
+
+    State.demoRowsCache = { revision: State.dataRevision, rows };
+    return rows;
   }
 
   function getDemoRows() {
+    if (State.latestDemoRowsCache?.revision === State.dataRevision) {
+      return State.latestDemoRowsCache.rows;
+    }
+
     const latestByCompany = new Map();
 
     for (const row of getAllDemoRows()) {
@@ -4076,7 +4246,9 @@ async function saveModule(form) {
       }
     }
 
-    return [...latestByCompany.values()];
+    const rows = [...latestByCompany.values()];
+    State.latestDemoRowsCache = { revision: State.dataRevision, rows };
+    return rows;
   }
 
   function compareRoundLatest(a, b) {
@@ -4151,15 +4323,6 @@ async function saveModule(form) {
 
   function getDemoRow(roundId) {
     return getAllDemoRows().find((row) => row.round.id === roundId);
-  }
-
-  function countByStatus(rows) {
-    const counts = {};
-    for (const row of rows) {
-      const label = row.effectiveStatus || '-';
-      counts[label] = (counts[label] || 0) + 1;
-    }
-    return counts;
   }
 
   function countByModule(rows) {
@@ -4339,18 +4502,23 @@ async function saveModule(form) {
   function toCSV(rows) {
     if (!rows.length) return '';
     const headers = Object.keys(rows[0]);
-    const quote = (value) => `"${String(value ?? '').replace(/"/g, '""')}"`;
+    const quote = (value) => {
+      let text = String(value ?? '');
+      if (/^[=+\-@]/.test(text)) text = `'${text}`;
+      return `"${text.replace(/"/g, '""')}"`;
+    };
     return [headers.map(quote).join(','), ...rows.map((row) => headers.map((h) => quote(row[h])).join(','))].join('\n');
   }
 
   function downloadText(filename, text, type) {
-    const blob = new Blob([text], { type });
+    const payload = /csv/i.test(type) ? `\uFEFF${text}` : text;
+    const blob = new Blob([payload], { type });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
     a.download = filename;
     a.click();
-    URL.revokeObjectURL(url);
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 
   function renderEmail(row, template) {
@@ -4491,7 +4659,10 @@ async function saveModule(form) {
       end_date: form.end_date?.value || addDaysISO(todayISO(), 14),
       renewal_no: Number(form.renewal_no?.value || 0),
       modules: $$('input[name="modules"]:checked', form).map((input) => input.value),
-      accounts: collectDemoAccounts(form, { includeEmpty: true })
+      accounts: collectDemoAccounts(form, { includeEmpty: true }).map((account) => ({
+        login_email: account.login_email,
+        note: account.note || ''
+      }))
     };
   }
 
@@ -4576,6 +4747,7 @@ async function saveModule(form) {
     const list = $('#accounts-list');
     if (!list) return;
     list.insertAdjacentHTML('beforeend', renderAccountRow());
+    bindAccessibleMarkup(list);
   }
 
   function togglePassword(button) {
@@ -4608,17 +4780,56 @@ async function saveModule(form) {
   }
 
   function showModal(html) {
-    $('#modal-root').innerHTML = `<div class="modal-backdrop"><section class="modal">${html}</section></div>`;
+    State.modalReturnFocus = document.activeElement;
+    const root = $('#modal-root');
+    root.innerHTML = `<div class="modal-backdrop"><section class="modal" role="dialog" aria-modal="true" tabindex="-1">${html}</section></div>`;
+    const dialog = root.querySelector('[role="dialog"]');
+    const title = dialog?.querySelector('header strong');
+    if (title) {
+      title.id = `modal-title-${Date.now()}`;
+      dialog.setAttribute('aria-labelledby', title.id);
+    } else {
+      dialog?.setAttribute('aria-label', 'หน้าต่างดำเนินการ');
+    }
+    bindAccessibleMarkup(dialog);
+    window.setTimeout(() => {
+      const firstFocusable = dialog?.querySelector('button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), a[href]');
+      (firstFocusable || dialog)?.focus();
+    }, 0);
   }
 
   function closeModal() {
     $('#modal-root').innerHTML = '';
+    if (State.modalReturnFocus?.isConnected) State.modalReturnFocus.focus();
+    State.modalReturnFocus = null;
+  }
+
+  function bindAccessibleMarkup(root) {
+    if (!root) return;
+
+    $$('th:not([scope])', root).forEach((header) => {
+      header.setAttribute('scope', 'col');
+    });
+
+    $$('label:not([for])', root).forEach((label) => {
+      if (label.querySelector('input, select, textarea, button')) return;
+      const field = label.closest('.field');
+      const control = field?.querySelector('input:not([type="hidden"]), select, textarea');
+      if (!control) return;
+
+      if (!control.id) {
+        accessibleControlSequence += 1;
+        control.id = `demo-crm-field-${accessibleControlSequence}`;
+      }
+      label.htmlFor = control.id;
+    });
   }
 
   function toast(message, type = '') {
     const root = $('#toast-root');
     const div = document.createElement('div');
     div.className = `toast ${type}`;
+    div.setAttribute('role', type === 'error' ? 'alert' : 'status');
     div.textContent = message;
     root.appendChild(div);
     window.setTimeout(() => div.remove(), 4600);
@@ -4663,10 +4874,6 @@ async function saveModule(form) {
     if (!row) return false;
     if (userIsAdmin()) return true;
     return !row.round?.first_email_sent_at;
-  }
-
-  function firstEmailAlreadySent(row) {
-    return Boolean(row?.round?.first_email_sent_at);
   }
 
   function findProfile(id) {
@@ -4716,18 +4923,9 @@ async function saveModule(form) {
     return emails.join(', ');
   }
 
-  function demoPasswordsCopyText(row) {
-    const accounts = row?.accounts || [];
-    if (!accounts.length) return '';
-    return accounts
-      .map((account) => account.password)
-      .filter(Boolean)
-      .join('\n');
-  }
-
   function canCloseDemoRound(row) {
     if (!row?.round?.end_date) return false;
-    return row.round.end_date <= todayISO() && row.statusSystemKey !== 'closed' && row.effectiveStatus !== STATUS.CLOSED;
+    return row.round.end_date <= todayISO() && !row.isFinalStatus;
   }
 
   function canHardDelete(row) {
@@ -4768,9 +4966,11 @@ async function saveModule(form) {
 
   function daysBetween(start, end) {
     if (!start || !end) return 0;
-    const s = new Date(`${start}T00:00:00`);
-    const e = new Date(`${end}T00:00:00`);
-    return Math.floor((e - s) / 86400000);
+    const [startYear, startMonth, startDay] = String(start).split('-').map(Number);
+    const [endYear, endMonth, endDay] = String(end).split('-').map(Number);
+    const startUtc = Date.UTC(startYear, startMonth - 1, startDay);
+    const endUtc = Date.UTC(endYear, endMonth - 1, endDay);
+    return Math.round((endUtc - startUtc) / 86400000);
   }
 
   function currentMonthKey() {
@@ -4779,8 +4979,10 @@ async function saveModule(form) {
 
   function shiftMonthKey(monthKey, delta) {
     const [yearText, monthText] = String(monthKey || currentMonthKey()).split('-');
-    const date = new Date(Number(yearText), Number(monthText) - 1 + Number(delta || 0), 1);
-    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+    const absoluteMonth = Number(yearText) * 12 + Number(monthText) - 1 + Number(delta || 0);
+    const year = Math.floor(absoluteMonth / 12);
+    const month = ((absoluteMonth % 12) + 12) % 12 + 1;
+    return `${year}-${String(month).padStart(2, '0')}`;
   }
 
   function formatCalendarMonth(monthKey) {
@@ -4796,9 +4998,9 @@ async function saveModule(form) {
   }
 
   function addDaysISO(date, days) {
-    const d = new Date(`${date}T00:00:00`);
-    d.setDate(d.getDate() + days);
-    return d.toISOString().slice(0, 10);
+    const [year, month, day] = String(date).split('-').map(Number);
+    const value = new Date(Date.UTC(year, month - 1, day + Number(days || 0)));
+    return value.toISOString().slice(0, 10);
   }
 
   function defaultMonthRange() {
@@ -4806,12 +5008,6 @@ async function saveModule(form) {
       start: '',
       end: ''
     };
-  }
-
-  function toLocalISODate(date) {
-    const d = new Date(date);
-    d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
-    return d.toISOString().slice(0, 10);
   }
 
   function dateInRange(date, start, end) {
@@ -4947,6 +5143,34 @@ async function saveModule(form) {
     }
 
     return error instanceof Error ? error : new Error(message);
+  }
+
+  function migrationAwareError(error, functionName = '') {
+    const message = safeError(error);
+    if (
+      /could not find.*function/i.test(message)
+      || /schema cache/i.test(message)
+      || (functionName && message.includes(functionName))
+    ) {
+      return new Error('ฟังก์ชันฐานข้อมูลยังไม่พร้อม กรุณารัน SQL 016_v1_5_0_reliability_security.sql แล้วรีเฟรชหน้าเว็บ');
+    }
+    return error instanceof Error ? error : new Error(message);
+  }
+
+  function demoSaveError(error) {
+    const message = safeError(error);
+    const mappings = [
+      [/COMPANY_NAME_EXISTS/i, 'มีบริษัทชื่อนี้อยู่แล้ว กรุณาเปิดรายการเดิมและใช้คำสั่งต่ออายุแทนการสร้างซ้ำ'],
+      [/COMPANY_CONFLICT/i, 'ข้อมูลบริษัทนี้ถูกแก้ไขจากผู้ใช้อื่นแล้ว กรุณารีเฟรชและตรวจข้อมูลล่าสุดก่อนบันทึกอีกครั้ง'],
+      [/DEMO_ROUND_CONFLICT/i, 'รายการนี้ถูกแก้ไขจากผู้ใช้อื่นแล้ว กรุณารีเฟรชและตรวจข้อมูลล่าสุดก่อนบันทึกอีกครั้ง'],
+      [/DEMO_ROUND_NOT_FOUND_OR_FORBIDDEN|DEMO_ROUND_UPDATE_FORBIDDEN|RENEW_SOURCE_UPDATE_FORBIDDEN/i, 'ไม่พบรายการหรือไม่มีสิทธิ์แก้ไข กรุณารีเฟรชข้อมูล'],
+      [/INVALID_DEMO_DATE_RANGE/i, 'วันที่สิ้นสุดต้องไม่ก่อนวันที่เริ่ม'],
+      [/CLOSED_STATUS_NOT_CONFIGURED/i, 'ยังไม่ได้ตั้งค่าสถานะปิดรายการใน Status Master'],
+      [/ACTIVE_PROFILE_REQUIRED/i, 'โปรไฟล์ผู้ใช้งานถูกปิดหรือไม่พร้อมใช้งาน']
+    ];
+    const matched = mappings.find(([pattern]) => pattern.test(message));
+    if (matched) return new Error(matched[1]);
+    return migrationAwareError(error, 'save_demo_round_transaction');
   }
 
   function safeError(error) {

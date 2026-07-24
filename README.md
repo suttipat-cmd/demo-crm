@@ -1,438 +1,184 @@
-# DEMO CRM
+# DEMO CRM v1.5.0
 
-DEMO CRM สำหรับทีม Customer Support ใช้จัดการบริษัทที่ขอทดลองใช้งานระบบ demo แทน Google Sheet
+เว็บแอปสำหรับทีม Customer Support เพื่อจัดการบริษัท รอบทดลองใช้งาน บัญชีเดโม โมดูล ผู้รับผิดชอบ บันทึกความคืบหน้า การแจ้งเตือน รายงาน และอีเมล
 
-## Version
+- Frontend: Static HTML/CSS/JavaScript
+- Authentication/Database: Supabase
+- Email gateway: Google Apps Script + MailApp
+- Deployment target: GitHub Pages หรือ static hosting ที่ใช้ HTTPS
 
-- Current: `v1.4.8`
-- Type: Hard Delete Demo Round + Related Data Cleanup RPC
-- Frontend: Static HTML/CSS/JS on GitHub Pages
-- Backend: Supabase Auth + Database
-- Email: Google Apps Script
+## สิ่งที่แก้ใน v1.5.0
 
-## Files
+- บันทึกสร้าง/แก้ไข/ต่ออายุเดโมผ่าน transaction RPC เดียว ป้องกันข้อมูลบันทึกค้างเพียงบางตาราง
+- ตรวจ `updated_at` ก่อนแก้ไข ป้องกันเขียนทับข้อมูลที่ผู้ใช้อื่นแก้ไปแล้ว
+- ปิดรายการผ่าน transaction RPC และเพิ่ม Activity Log ใน transaction เดียว
+- ปุ่มลบเรียก `hard_delete_demo_round` ซึ่งลบข้อมูลของรอบที่เลือกทั้งหมดใน transaction เดียว โดยไม่ปิด RLS
+- เพิ่ม idempotency key ให้การส่งอีเมล ป้องกันส่งซ้ำจาก retry, double click หรือหลายแท็บ
+- Apps Script ป้องกันการส่งซ้ำด้วย database state และ sent marker
+- ไม่โหลดรหัสผ่านทุกบัญชีตั้งแต่เปิดเว็บ โหลดเฉพาะรอบที่ผู้ใช้เปิดดู/แก้ไข/ส่งอีเมล
+- ล้างเนื้อหาอีเมลออกจาก `email_logs.body` หลัง gateway ประมวลผลสำเร็จหรือผิดพลาด
+- โหลดข้อมูลแบบแบ่งหน้า รองรับมากกว่า 1,000 แถว โดยกำหนดเพดานความปลอดภัย 50,000 แถวต่อตาราง
+- ใช้ library แบบ self-hosted ไม่พึ่ง CDN ขณะใช้งาน
+- เพิ่ม validation, loading/error feedback, duplicate-action guard, keyboard focus, modal focus trap, reduced motion และ responsive layout
+- ปรับ Dashboard ให้ช่วงวันที่มีผลต่อ KPI/กราฟ/รายการอย่างสอดคล้องกัน
+- ปรับปุ่มเตือน 3 วันให้ส่งอีเมลจริงและรายงานจำนวนสำเร็จ/ล้มเหลว
+- เพิ่ม CSV formula-injection protection
 
-```txt
+## โครงสร้างไฟล์
+
+```text
 index.html
 style.css
 script.js
 README.md
+THIRD_PARTY_NOTICES.md
 apps-script/
   Code.gs
 supabase/
-  009_v1_2_9_activity_log_source.sql
-  010_v1_3_0_profile_avatar.sql
-  011_v1_3_2_notification_states.sql
-  012_v1_3_8_status_master.sql
-  013_v1_4_3_activity_log_latest_manual_rls.sql
-  014_v1_4_4_activity_log_rpc_rls.sql
   015_v1_4_8_hard_delete_demo_round.sql
-  reset_transaction_data_keep_masters.sql
+  016_v1_5_0_reliability_security.sql
+tests/
+  static-check.mjs
+vendor/
+  supabase-js-2.110.8.min.js
+  xlsx-0.18.5.min.js
+  ag-grid-community-36.0.0.min.js
+  LICENSE-*.txt
 ```
 
-## v1.4.8 Update
+## ข้อกำหนดก่อนอัปเกรด
 
-- เปลี่ยนปุ่ม `ลบ` รายการเดโมจาก Soft Delete เป็น Hard Delete ผ่าน RPC:
-  - `hard_delete_demo_round(p_round_id)`
-- เมื่อยืนยันการลบ ระบบจะลบข้อมูลที่เป็นของรอบเดโมนั้นทั้งหมด:
-  - `demo_accounts`
-  - `demo_round_modules`
-  - `activity_logs`
-  - `email_logs`
-  - `notification_states` ที่เกี่ยวข้อง
-  - แถวรอบเดโมใน `demo_rounds`
-- หากมีรอบต่ออายุอื่นอ้างอิงรอบที่ถูกลบ ระบบจะเก็บรอบอื่นไว้และตัดเฉพาะ `renewed_from_round_id`
-- หากบริษัทไม่มีรอบเดโมอื่นเหลืออยู่ ระบบจะลบ Activity Log ระดับบริษัทที่ยังเหลือและแถวใน `companies`
-- หากบริษัทยังมีรอบเดโมอื่น ระบบจะไม่ลบบริษัทและไม่กระทบรอบอื่น
-- Permission:
-  - Admin ลบได้ทุกสถานะ
-  - User ลบได้เฉพาะรายการสถานะ `รอดำเนินการ` ที่ตนเองสร้าง
-- การลบทำงานภายใน transaction เดียว หากขั้นตอนใดผิดพลาดจะ rollback ทั้งหมด
-- ยังคงเปิด RLS และไม่ใช้ `service_role` ใน Frontend
-- ต้องรัน SQL `supabase/015_v1_4_8_hard_delete_demo_round.sql` ก่อน Deploy Frontend v1.4.8
+เวอร์ชันนี้เป็นแพ็กอัปเกรดสำหรับฐานข้อมูลเดิมของ DEMO CRM ซึ่งต้องมี schema และ migrations ถึง v1.4.4 แล้ว ได้แก่ตาราง/ฟังก์ชันที่ frontend เดิมใช้งาน เช่น `profiles`, `companies`, `demo_rounds`, `demo_accounts`, `demo_round_modules`, `modules`, `responsible_people`, `demo_statuses`, `activity_logs`, `email_logs`, `email_templates`, `notification_states`, `settings`, `is_admin()`, `update_latest_activity_log_message()` และ `soft_delete_latest_activity_log()`
 
-### Install SQL v1.4.8
+หากเป็นการติดตั้งฐานข้อมูลใหม่ตั้งแต่ศูนย์ แพ็กไฟล์ที่ได้รับจากผู้ใช้ไม่มี base schema และ migrations 001–014 จึงต้องนำ schema เดิมมารันก่อน ไฟล์ 015–016 ไม่ใช่ full schema สำหรับฐานข้อมูลเปล่า
 
-1. Backup ฐานข้อมูลก่อน
-2. เปิด Supabase SQL Editor
-3. รันไฟล์:
+## ขั้นตอนติดตั้ง
 
-```txt
+### 1. สำรองข้อมูล
+
+สำรอง Supabase Database ก่อนรัน migration โดยเฉพาะก่อนทดสอบ Hard Delete
+
+### 2. รัน SQL ตามลำดับ
+
+เปิด Supabase SQL Editor ด้วย role เจ้าของฐานข้อมูล แล้วรัน:
+
+```text
 supabase/015_v1_4_8_hard_delete_demo_round.sql
+supabase/016_v1_5_0_reliability_security.sql
 ```
 
-4. ตรวจว่าไม่มี Error และพบฟังก์ชัน `hard_delete_demo_round`
-5. Deploy Frontend v1.4.8
-6. Hard refresh หน้าเว็บ
+ห้ามปิด RLS เพื่อแก้ปัญหาสิทธิ์
 
-Rollback note:
-- สามารถ rollback Frontend กลับไป v1.4.7 ได้
-- RPC v1.4.8 สามารถคงอยู่ในฐานข้อมูลได้ แต่ Frontend v1.4.7 จะไม่เรียกใช้
-- ข้อมูลที่ถูก Hard Delete ไปแล้วไม่สามารถกู้คืนด้วยการ rollback โค้ด
+ตรวจหลังติดตั้ง:
 
-## v1.4.7 Update
+```sql
+select p.proname, p.prosecdef
+from pg_proc p
+join pg_namespace n on n.oid = p.pronamespace
+where n.nspname = 'public'
+  and p.proname in (
+    'hard_delete_demo_round',
+    'save_demo_round_transaction',
+    'get_demo_accounts_sensitive',
+    'close_demo_round_transaction'
+  )
+order by p.proname;
 
-- เปลี่ยนการปิดรายการให้แก้เฉพาะสถานะของ `demo_rounds`
-  - ไม่ลบ ไม่ soft delete และไม่ cleanup `activity_logs`
-  - เก็บประวัติ manual log และ system log ทั้งหมดของรอบเดโมไว้
-  - ครอบคลุมทั้งการกดปุ่ม `ปิด`, การเปลี่ยนเป็นสถานะจบงานจากหน้าแก้ไข และการปิดรอบเดิมเมื่อทำรายการต่ออายุ
-- รอบเดโมใหม่และรอบต่ออายุจะตั้งค่า:
-  - `first_email_sent_at = null`
-  - `reminder_email_sent_at = null`
-- หลังต่ออายุ ผู้ใช้ต้องกดส่งอีเมลเอง และสามารถส่งอีเมลแจ้งข้อมูลเดโมสำหรับรอบใหม่ได้
-- ประวัติการส่งอีเมลและ activity log ของรอบก่อนยังคงอยู่
-- ไม่เปลี่ยน database schema, Supabase RLS, RPC หรือ SQL migration
-- ไม่ต้องรัน SQL เพิ่มสำหรับ v1.4.7
-
-## v1.4.6 Update
-
-- เพิ่ม AG Grid Community ในหน้า `รายการเดโม` เฉพาะมุมมอง `ตาราง`
-  - ใช้ CDN แบบ pinned version `ag-grid-community@36.0.0`
-  - เปิด sorting, column filter, column resize, pinned columns และ pagination ของ AG Grid
-  - คง filter เดิมของระบบ: ค้นหา, สถานะ, ผู้รับผิดชอบ, โมดูล, จัดเรียง และใกล้หมดอายุ 7 วัน
-  - คง action เดิมครบ: ดู, แก้ไข, ต่ออายุ, ปิด, อีเมล, ลบ, คัดลอกชื่อบริษัท, คัดลอกอีเมล และคัดลอกรหัสผ่าน
-- คงมุมมอง `ปฏิทิน` เดิมในหน้า `รายการเดโม`
-- เพิ่ม fallback table เดิม หากโหลด AG Grid CDN ไม่สำเร็จ
-- ไม่เปิด inline edit ใน grid รอบนี้ เพื่อลดความเสี่ยง bypass validation/business logic
-- ไม่เปลี่ยน database schema, Supabase RLS, RPC หรือ SQL migration
-- ไม่ต้องรัน SQL เพิ่มสำหรับ v1.4.6
-
-## v1.4.5 Update
-
-- หน้า `สร้างเดโม` / `แก้ไขเดโม` เอาส่วน `บันทึกความคืบหน้า` ออกจากฟอร์ม
-- การบันทึก demo จะไม่สร้าง `activity_logs` อีกต่อไป ทั้ง manual log และ system log จากฟอร์มนี้
-- การเพิ่มบันทึกความคืบหน้าให้ทำจากหน้ารายละเอียดเดโม / ส่วน activity log เท่านั้น
-- เพิ่มมุมมอง `ปฏิทิน` ในหน้า `รายการเดโม`
-  - แสดงรายการตามวันที่หมดอายุของ demo (`demo_rounds.end_date`)
-  - ใช้สีรายการตามสถานะ demo จาก status master
-  - กดรายการในปฏิทินเพื่อเปิดรายละเอียด demo
-- ปรับ logic เลือกรอบล่าสุดให้ใช้ `renewal_no → end_date → start_date → created_at` เพื่อลดความเสี่ยงข้อมูล migrate เรียงผิด
-- ไม่ต้องรัน SQL เพิ่มสำหรับ v1.4.5
-
-## v1.4.4 Update
-
-- แก้ root cause ที่กด `ลบ` / `แก้ไข` activity log แล้วยังติด RLS แม้รัน SQL v1.4.3 แล้ว
-- เพิ่ม SQL migration `supabase/014_v1_4_4_activity_log_rpc_rls.sql`
-- เพิ่ม RPC ที่ enforce permission เองโดยไม่ปิด RLS:
-  - `update_latest_activity_log_message(log_id, new_message)`
-  - `soft_delete_latest_activity_log(log_id)`
-- ปรับ `UPDATE policy` ของ `activity_logs` ให้รองรับ soft delete ด้วย `deleted_at`
-- ยังคง rule เดิม: แก้ไข/ลบได้เฉพาะ `manual log` ล่าสุดของแต่ละบริษัท และต้องเป็นเจ้าของ record หรือ admin
-- เพิ่มปุ่ม `คัดลอกชื่อบริษัท` ใต้คอลัมน์ `ชื่อบริษัท` ในหน้า `รายการเดโม`
-- ปรับ error message ให้ชี้ไปที่ SQL v1.4.4
-- Sync version/cache เป็น `v1.4.4`
-
-### Install SQL v1.4.4
-
-1. Backup database ก่อน
-2. เปิด Supabase SQL Editor
-3. รันไฟล์:
-
-```txt
-supabase/014_v1_4_4_activity_log_rpc_rls.sql
+select indexname
+from pg_indexes
+where schemaname = 'public'
+  and indexname = 'email_logs_idempotency_key_uidx';
 ```
 
-4. Deploy frontend แล้ว hard refresh
-5. ทดสอบแก้ไข/ลบ manual log ล่าสุดอีกครั้ง
+ควรพบ 4 functions และ 1 unique index
 
-Rollback note:
-- ถ้าต้อง rollback frontend ให้กลับไป tag/commit v1.4.3
-- ถ้าต้อง rollback SQL ให้แจ้งก่อน เพราะ v1.4.4 เพิ่ม RPC และ policy ใหม่ที่ใช้กับ frontend v1.4.4 โดยตรง
+### 3. ตั้งค่า Frontend
 
-## v1.4.3 Update
+ตรวจ `APP_CONFIG` ตอนต้นของ `script.js`:
 
-- แก้ root cause error `new row violates row-level security policy for table "activity_logs"` ตอนกดลบบันทึก
-- เพิ่ม SQL migration `supabase/013_v1_4_3_activity_log_latest_manual_rls.sql`
-- ปรับ RLS/trigger ของ `activity_logs` ให้ตรงกับ UX:
-  - แก้ไข/ลบได้เฉพาะ `manual log` ล่าสุดของแต่ละบริษัท
-  - system log เช่น log ส่งอีเมล/เปลี่ยนสถานะ จะไม่ทำให้ manual log ล่าสุดถูกล็อกผิด
-  - soft delete ด้วย `deleted_at` ผ่าน RLS ได้ถูกต้อง
-- ปรับ frontend ให้เรียงบันทึกล่าสุดแบบ deterministic ด้วย `created_at` และ `id`
-- เพิ่มข้อความ error ที่ชัดขึ้น หากยังไม่ได้รัน SQL v1.4.3
-- อัปเดต README คู่กับโค้ดและ SQL ตาม release rule
-
-## v1.4.2 Update
-
-- เปลี่ยนช่อง `ข้อความบันทึก` ในหน้ารายละเอียดบริษัทจาก input บรรทัดเดียวเป็น textarea
-- ผู้ใช้สามารถกด Enter เพื่อขึ้นบรรทัดใหม่ในข้อความบันทึกได้
-- การเพิ่มบันทึกต้องกดปุ่ม `เพิ่มบันทึก` เท่านั้น ไม่บันทึกด้วย Enter
-- บันทึกที่แสดงใน timeline จะรักษาการขึ้นบรรทัดใหม่ตามที่ผู้ใช้พิมพ์
-- ปุ่ม `แก้ไข` และ `ลบ` แสดงในทุกบันทึก แต่จะใช้งานได้เฉพาะบันทึกล่าสุดของบริษัทเท่านั้น
-- บันทึกเก่าจะ disabled ปุ่ม `แก้ไข` และ `ลบ` พร้อม tooltip อธิบาย
-- แก้ logic ตรวจบันทึกล่าสุดให้ดูเฉพาะ manual log ที่ยังไม่ถูกลบ
-- ไม่มีการเปลี่ยน database schema หรือ SQL
-- อัปเดต README คู่กับโค้ดตาม release rule
-
-## v1.4.0 Update
-
-- ปรับ Dashboard เพื่อลดพื้นที่ส่วนบนและลดข้อมูลซ้ำ
-- ย้ายการ์ด `เดโมในช่วงที่เลือก` และ `ใกล้หมดอายุ 7 วัน` ไปอยู่บรรทัดเดียวกับปุ่ม `สร้างคิวเตือน 3 วัน`
-- เปลี่ยนการ์ดทั้ง 2 ใบเป็น compact KPI card ขนาดเล็ก
-- เปลี่ยน section เดิม `จำนวนตามสถานะ` เป็น KPI ใหม่ชื่อ `อัตราเป็นลูกค้า`
-- `อัตราเป็นลูกค้า` คำนวณจากจำนวนเดโมที่เป็นสถานะ `เป็นลูกค้าแล้ว` เทียบกับจำนวนเดโมทั้งหมด
-- คง section `สรุปตามสถานะ` ไว้สำหรับดูจำนวนตาม Status Master
-- คง section `จำนวนตามโมดูล` ไว้เหมือนเดิม
-- ไม่มีการเปลี่ยน database schema
-- อัปเดต README คู่กับโค้ดตาม release rule
-
-## v1.3.9 Update
-
-- ตัดการ์ด Dashboard เดิมที่ซ้ำกับ `สรุปตามสถานะ` ออก:
-  - `หมดอายุ`
-  - `เป็นลูกค้าแล้ว`
-- คงการ์ด Dashboard ที่ไม่ซ้ำไว้:
-  - `เดโมในช่วงที่เลือก`
-  - `ใกล้หมดอายุ 7 วัน`
-- เพิ่ม error handling กลางให้ click actions บนหน้าเว็บ
-  - ถ้า action ใดเกิด error จะขึ้น toast แทนการหลุดเป็น error ใน console
-  - ลดความเสี่ยงที่ผู้ใช้กดแล้วไม่รู้ว่าเกิดอะไรขึ้น
-- ไม่มีการเปลี่ยน database schema
-- อัปเดต README คู่กับโค้ดตาม release rule
-
-## v1.3.8 Update
-
-- เพิ่ม `Status Master` ในเมนู `ตั้งค่าระบบ → สถานะ`
-- Admin สามารถเพิ่มสถานะใหม่เองได้
-- Admin แก้ชื่อ สี ลำดับ เปิด/ปิดใช้งาน และกำหนดว่าเป็นสถานะจบงานได้
-- สถานะที่ถูกใช้งานแล้วลบไม่ได้ แต่ยังเปลี่ยนชื่อได้
-- Dropdown สถานะในฟอร์มเดโมและ filter สถานะในหน้า `รายการเดโม` ดึงจาก master
-- Badge สีสถานะใช้สีจาก master
-- Dashboard เพิ่ม section `สรุปตามสถานะ` เป็น card ตามสถานะ พร้อมจำนวนและเปอร์เซ็นต์
-- กด card สถานะบน Dashboard แล้วไปหน้า `รายการเดโม` พร้อม filter สถานะนั้น
-- คง logic ระบบเดิม:
-  - สถานะระบบหลักยังมี `รอดำเนินการ`, `เปิดใช้งาน`, `หมดอายุ`, `ปิดรายการ`, `เป็นลูกค้าแล้ว`
-  - สถานะ `ปิดรายการ` และ `เป็นลูกค้าแล้ว` เป็นสถานะจบงาน
-  - การ auto status ตามวันที่ยังใช้กับสถานะระบบหลักเท่านั้น
-  - สถานะ custom จะไม่ถูก auto overwrite เพื่อไม่ให้ข้อมูล user หาย
-- อัปเดต README คู่กับโค้ดและ SQL ตาม release rule ล่าสุด
-
-## SQL Required
-
-v1.4.8 ต้องรัน migration ต่อไปนี้ก่อน Deploy Frontend:
-
-```txt
-supabase/015_v1_4_8_hard_delete_demo_round.sql
+```js
+const APP_CONFIG = {
+  SUPABASE_URL: 'https://YOUR_PROJECT_ID.supabase.co',
+  SUPABASE_ANON_KEY: 'YOUR_SUPABASE_ANON_KEY',
+  APPS_SCRIPT_URL: ''
+};
 ```
 
-ถ้ายังไม่เคยรัน migration เดิม ให้รันตามลำดับนี้ก่อนใช้งานเวอร์ชันล่าสุด:
+ใช้เฉพาะ Supabase anon/publishable key เท่านั้น ห้ามใส่ `service_role`, database password หรือ private token ใน frontend
 
-```txt
-supabase/009_v1_2_9_activity_log_source.sql
-supabase/010_v1_3_0_profile_avatar.sql
-supabase/011_v1_3_2_notification_states.sql
-supabase/012_v1_3_8_status_master.sql
-supabase/013_v1_4_3_activity_log_latest_manual_rls.sql
-supabase/014_v1_4_4_activity_log_rpc_rls.sql
-supabase/015_v1_4_8_hard_delete_demo_round.sql
-```
+### 4. ติดตั้ง Google Apps Script
 
-หมายเหตุ:
-- ห้ามปิด RLS เพื่อแก้ error
-- ควร backup database ก่อนรัน migration จริงทุกครั้ง
-- Frontend v1.4.8 ใช้ RPC จาก SQL v1.4.4 สำหรับแก้ไข/ลบ manual log ล่าสุด
-- Frontend v1.4.8 ใช้ RPC จาก SQL v1.4.8 สำหรับ Hard Delete รายการเดโม
-- ต้องรัน SQL v1.4.8 ก่อน Deploy Frontend เพื่อป้องกันปุ่มลบเรียกฟังก์ชันไม่พบ
+1. สร้างหรือเปิด Apps Script project ที่ใช้ส่งอีเมล
+2. แทนที่ `Code.gs` ด้วยไฟล์ `apps-script/Code.gs`
+3. ตั้ง Script Properties:
+   - `SUPABASE_URL`
+   - `SUPABASE_ANON_KEY`
+   - `SENDER_NAME` (ไม่บังคับ)
+4. รัน `testConfiguration()` หนึ่งครั้งเพื่ออนุญาตสิทธิ์
+5. Deploy เป็น Web app:
+   - Execute as: Me
+   - Who has access: Anyone
+6. ใช้ URL ที่ลงท้าย `/exec`
+7. Login เป็น Admin ใน DEMO CRM แล้วบันทึก URL ที่เมนู ตั้งค่าระบบ → ตั้งค่าอีเมล
 
-## Status Master Design
+Frontend ยอมรับเฉพาะ URL รูปแบบ `https://script.google.com/macros/s/.../exec`
 
-ตารางใหม่:
+### 5. Deploy Static Files
 
-```txt
-demo_statuses
-- id
-- name
-- color
-- sort_order
-- is_active
-- is_final
-- system_key
-- created_at
-- updated_at
-```
-
-`demo_rounds` เพิ่ม field:
-
-```txt
-status_id
-```
-
-หมายเหตุ:
-- `demo_rounds.status` ยังถูกเก็บไว้เพื่อ backward compatibility
-- logic ใหม่ใช้ `status_id` เป็นหลัก
-- trigger จะ sync `status` จาก `demo_statuses.name`
-- ถ้าเปลี่ยนชื่อสถานะที่ใช้งานอยู่ ระบบจะแสดงชื่อใหม่ผ่าน master
-
-## Reset Transaction Data
-
-ใช้สำหรับล้างข้อมูลทดสอบก่อนใช้งานจริง โดยเก็บ master data ไว้:
-
-```txt
-supabase/reset_transaction_data_keep_masters.sql
-```
-
-ไฟล์นี้ล้าง:
-- companies
-- demo_rounds
-- demo_accounts
-- demo_round_modules
-- activity_logs
-- email_logs
-- notification_states
-
-ไฟล์นี้เก็บ:
-- profiles/users
-- responsible_people
-- modules
-- demo_statuses
-- email_templates
-- settings/logo/fixed CC/Apps Script URL
-
-ควร backup database ก่อนรันจริงทุกครั้ง
-
-## Deploy
+อัปโหลดทั้งโฟลเดอร์ โดยต้องมี `vendor/` ครบ:
 
 ```bash
 git add .
-git commit -m "Release v1.4.8 hard delete demo round with related data"
+git commit -m "Release DEMO CRM v1.5.0"
 git push
 ```
 
-หลัง GitHub Pages deploy เสร็จ ให้ hard refresh:
+หลัง deploy ให้ hard refresh (`Ctrl+F5` หรือ `Cmd+Shift+R`)
 
-```txt
-Mac: Cmd + Shift + R
-Windows: Ctrl + F5
+## สิทธิ์การลบ
+
+- Admin ที่ active ลบเดโมได้ทุกสถานะ
+- User ที่ active ลบได้เฉพาะรอบสถานะ `pending/รอดำเนินการ` ที่ตนเองสร้าง
+- ระบบลบ `demo_accounts`, `demo_round_modules`, `activity_logs`, `email_logs`, notification state และแถว `demo_rounds` ของรอบนั้น
+- รอบต่ออายุอื่นที่อ้างถึงรอบเดิมจะยังอยู่ แต่ `renewed_from_round_id` ถูกตั้งเป็น `null`
+- `companies` จะถูกลบเมื่อไม่มีรอบอื่นอ้างถึงเท่านั้น
+- ทุกคำสั่งอยู่ใน transaction เดียว หากขั้นตอนใดผิดพลาด PostgreSQL จะ rollback ทั้งหมด
+- Hard Delete ไม่สามารถกู้คืนด้วยการ rollback โค้ด ต้องกู้จาก database backup
+
+## ความปลอดภัยที่ควรทราบ
+
+- รหัสผ่านบัญชีเดโมยังจำเป็นต้องเก็บในฐานข้อมูลเพื่อแสดงและประกอบอีเมล แต่ v1.5.0 ลดการกระจายข้อมูลด้วย RPC แบบโหลดเฉพาะรอบ ไม่โหลดทั้งตาราง
+- ใช้เฉพาะ credential สำหรับระบบทดลอง ห้ามนำรหัสผ่าน production หรือรหัสผ่านที่ใช้ซ้ำกับระบบอื่นมาเก็บ
+- `Code.gs` ตรวจ Supabase access token และอ่าน/อัปเดต `email_logs` ด้วยสิทธิ์ของผู้ใช้ ไม่ใช้ service role
+- Email body ถูก redact หลัง Apps Script ประมวลผล หากกด retry frontend จะสร้าง payload เดิมกลับในแถว idempotency เดิม
+- Static-hosting CSP แบบ `<meta>` ไม่สามารถบังคับ `frame-ancestors`; production hosting ควรส่ง HTTP headers `Content-Security-Policy`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer` และ `Permissions-Policy` เพิ่ม
+- ตรวจ Supabase Auth redirect URLs, password policy, session lifetime และ RLS policies ใน staging ก่อน production
+
+## การตรวจสอบก่อน Deploy
+
+รันจาก root ของโปรเจกต์:
+
+```bash
+node tests/static-check.mjs
 ```
 
-## Smoke Test เพิ่มเติมสำหรับ v1.4.8
+จากนั้นทดสอบ staging อย่างน้อย:
 
-ก่อนทดสอบ ให้สร้างข้อมูลทดสอบและ Backup ฐานข้อมูล
+1. Login/Logout, inactive profile ถูกปฏิเสธ
+2. สร้างเดโม, แก้ไข, ต่ออายุ และปิดรายการ
+3. เปิดหน้าแก้ไขพร้อมกัน 2 แท็บ แท็บที่บันทึกทีหลังต้องพบ conflict
+4. ลบเดโมของบริษัทที่มีหนึ่งรอบและหลายรอบ
+5. User ลบรายการของผู้อื่น/สถานะไม่ pending ต้องถูกปฏิเสธ
+6. Double click ส่งอีเมลและส่งพร้อมกัน 2 แท็บ ผู้รับต้องได้อีเมลครั้งเดียว
+7. Apps Script timeout หลังส่งแล้ว เมื่อ retry ต้องไม่ส่งซ้ำ
+8. ข้อมูล 0, 1, 1,001 และจำนวนมาก พร้อม search/filter/sort/export
+9. ภาษาไทย อังกฤษ emoji อักขระพิเศษ และข้อความยาวตามขีดจำกัด
+10. Desktop, tablet, mobile, keyboard-only และ reduced-motion
 
-- Login ด้วย User แล้วสร้างรายการสถานะ `รอดำเนินการ`
-- เพิ่มบัญชีเดโม โมดูล บันทึกความคืบหน้า และส่งอีเมลทดสอบ
-- กด `ลบ` แล้วตรวจว่ามีข้อความเตือนว่าเป็นการลบถาวร
-- กด `ยกเลิก` แล้วตรวจว่าไม่มีข้อมูลใดถูกลบ
-- กด `ลบ` และยืนยัน แล้วตรวจว่ารายการหายจาก Dashboard, ตาราง, ปฏิทิน และรายงาน
-- ตรวจฐานข้อมูลว่าไม่เหลือข้อมูลของรอบนั้นใน:
-  - `demo_rounds`
-  - `demo_accounts`
-  - `demo_round_modules`
-  - `activity_logs`
-  - `email_logs`
-  - `notification_states`
-- หากบริษัทมีรอบอื่น ให้ตรวจว่าบริษัทและรอบอื่นยังอยู่ครบ
-- หากบริษัทไม่มีรอบอื่น ให้ตรวจว่า `companies` ถูกลบ
-- ทดสอบ User ลบรายการของ User อื่นหรือรายการที่ไม่ใช่ `รอดำเนินการ` ต้องถูกปฏิเสธ
-- ทดสอบ Admin ลบรายการสถานะอื่นได้
-- ทดสอบกรณี RPC หรือ Foreign Key Error ต้องไม่มีข้อมูลถูกลบเพียงบางส่วน
-- ตรวจ Flow เดิม: สร้างเดโม, แก้ไข, ต่ออายุ, ปิดรายการ, Activity Log, ส่งอีเมล, Export และ Notification
+## Rollback
 
-## Smoke Test เพิ่มเติมสำหรับ v1.4.7
-
-- เลือกรอบเดโมที่มี activity log อย่างน้อย 2 รายการ แล้วกด `ปิด`
-- ตรวจว่าสถานะเปลี่ยนเป็น `ปิดรายการ` และ activity log เดิมยังอยู่ครบ
-- เปลี่ยนสถานะเป็นสถานะจบงานจากหน้า `แก้ไขเดโม` แล้วตรวจว่า activity log ไม่ถูกลบ
-- ต่ออายุ demo ที่เคยส่งอีเมลแล้ว
-- ตรวจว่ารอบเดิมถูกปิด แต่ activity log และประวัติอีเมลของรอบเดิมยังอยู่
-- เปิดรอบต่ออายุใหม่และตรวจว่าปุ่ม `อีเมล` แสดงสำหรับ user ปกติ
-- กดส่งอีเมลรอบใหม่ด้วยตนเอง แล้วตรวจว่า `first_email_sent_at` ถูกบันทึกเฉพาะรอบใหม่
-- ตรวจว่าการส่งอีเมลรอบใหม่ไม่เปลี่ยนค่า `first_email_sent_at` ของรอบเดิม
-
-## Smoke Test เพิ่มเติมสำหรับ v1.4.6
-
-- เปิดหน้า `รายการเดโม` แล้วมุมมอง `ตาราง` ต้องแสดงเป็น AG Grid
-- ตรวจว่า filter เดิมของระบบยังทำงาน: ค้นหา, สถานะ, ผู้รับผิดชอบ, โมดูล, จัดเรียง, ใกล้หมดอายุ 7 วัน
-- คลิกหัวคอลัมน์ใน AG Grid แล้ว sort ได้
-- เปิด column filter ใน AG Grid แล้วกรองข้อมูลได้
-- resize column และเลื่อนแนวนอนได้
-- pagination ของ AG Grid เปลี่ยนหน้าและเปลี่ยนจำนวนแถวต่อหน้าได้
-- ปุ่ม `คัดลอกชื่อบริษัท`, `คัดลอกอีเมล`, `คัดลอกรหัสผ่าน` ยังทำงาน
-- ปุ่ม `ดู`, `แก้ไข`, `ต่ออายุ`, `ปิด`, `อีเมล`, `ลบ` ยังทำงานตาม permission เดิม
-- สลับไปมุมมอง `ปฏิทิน` แล้วต้องแสดง calendar เดิมและกดรายการได้
-- ปิด internet/CDN ชั่วคราวหรือ block AG Grid เพื่อตรวจ fallback table สำรอง หากจำเป็น
-
-## Smoke Test เพิ่มเติมสำหรับ v1.4.5
-
-- เปิดหน้า `สร้างเดโม` แล้วต้องไม่เห็น section `บันทึกความคืบหน้า`
-- เปิดหน้า `แก้ไขเดโม` แล้วต้องไม่เห็น section `บันทึกความคืบหน้า`
-- บันทึก demo ใหม่แล้วตรวจว่าไม่มี activity log ใหม่ถูกสร้างจาก form save โดยอัตโนมัติ
-- เปิดหน้ารายละเอียด demo แล้วเพิ่ม `บันทึกความคืบหน้า` จากส่วน activity log ได้ตามปกติ
-- เปิดหน้า `รายการเดโม` แล้วสลับมุมมอง `ตาราง` / `ปฏิทิน` ได้
-- ในมุมมอง `ปฏิทิน` ต้องเห็นรายการตาม `วันที่สิ้นสุด` และสีตามสถานะ
-- กดรายการในปฏิทินแล้วต้องไปหน้ารายละเอียด demo ถูกต้อง
-- กด `ก่อนหน้า` / `เดือนนี้` / `ถัดไป` แล้วเดือนเปลี่ยนถูกต้อง
-- ตรวจว่า filter สถานะ/ผู้รับผิดชอบ/โมดูล/ค้นหา มีผลกับปฏิทินเหมือนตาราง
-
-## Smoke Test หลัง Deploy
-
-- ตรวจ Dashboard ว่าไม่มีการ์ดซ้ำ `หมดอายุ` และ `เป็นลูกค้าแล้ว` ใน section บนสุด
-- ตรวจ `สรุปตามสถานะ` ว่ายังแสดงสถานะครบและกด filter ได้
-- ทดสอบ click action เช่น รีเฟรช/ปิดรายการ/ลบ/ส่งอีเมล หาก error ต้องขึ้น toast
-
-- Login ด้วย admin
-- เปิด `ตั้งค่าระบบ → สถานะ`
-- เพิ่มสถานะใหม่ 1 รายการ
-- แก้สี/ลำดับ/ชื่อสถานะ
-- สร้างเดโมโดยเลือกสถานะจาก master
-- ตรวจหน้า `รายการเดโม` ว่า filter สถานะทำงาน
-- ตรวจ badge สีสถานะ
-- ตรวจ Dashboard section `สรุปตามสถานะ`
-- กด card สถานะบน Dashboard แล้วต้องไปหน้า `รายการเดโม` พร้อม filter
-- ทดสอบลบสถานะที่ยังไม่ถูกใช้งาน
-- ทดสอบลบสถานะที่ถูกใช้งาน ต้องลบไม่ได้
-- ตรวจ flow เดิม: สร้างเดโม, เพิ่ม log, ส่งอีเมล, ต่ออายุ, ปิดรายการ, รายงาน, notification
-
-
-## Smoke Test เพิ่มเติมสำหรับ v1.4.3
-
-- รัน SQL `supabase/013_v1_4_3_activity_log_latest_manual_rls.sql` ใน Supabase SQL Editor
-- Login ด้วย user ปกติที่เป็นเจ้าของบันทึก
-- เปิดหน้ารายละเอียดบริษัทที่มี manual log ล่าสุด และมี system log ใหม่กว่าหรือเคยส่งอีเมล
-- กด `ลบ` manual log ล่าสุด ต้องลบได้และไม่เจอ RLS error
-- เพิ่ม manual log ใหม่ แล้วกด `แก้ไข` ต้องแก้ได้
-- ตรวจว่าบันทึกเก่ายัง disabled ปุ่มแก้ไข/ลบ
-- Login ด้วย admin แล้วตรวจว่า UI ยังแก้ไข/ลบได้เฉพาะ manual log ล่าสุดเท่านั้น
-
-## Smoke Test เพิ่มเติมสำหรับ v1.4.2
-
-- เปิดหน้ารายละเอียดบริษัท
-- กรอก `ข้อความบันทึก` หลายบรรทัด แล้วกด `เพิ่มบันทึก`
-- ตรวจว่า timeline แสดงข้อความหลายบรรทัดถูกต้อง
-- กด Enter ในช่องข้อความแล้วต้องขึ้นบรรทัดใหม่ ไม่ submit ฟอร์ม
-- ตรวจว่าบันทึกล่าสุดเท่านั้นที่กด `แก้ไข` และ `ลบ` ได้
-- ตรวจว่าบันทึกเก่ามีปุ่ม disabled และไม่สามารถแก้ไข/ลบได้
-- แก้ไขบันทึกล่าสุดเป็นหลายบรรทัด แล้วตรวจผลหลังบันทึก
-
-## Security Notes
-
-- ห้ามใส่ `service_role key`, database password, GitHub token หรือ Apps Script secret ใน frontend/repo
-- Frontend ใช้ Supabase anon public key เท่านั้น
-- RLS ต้องเปิดทุก table ที่ frontend เข้าถึง
-- `demo_statuses` ให้ authenticated อ่านได้ และ admin เท่านั้นที่เพิ่ม/แก้/ลบได้
-- การลบสถานะถูกกันทั้ง frontend และ RLS policy ถ้าสถานะถูกใช้งานอยู่
-
-## Known External Setup
-
-- AG Grid Community CDN: `https://cdn.jsdelivr.net/npm/ag-grid-community@36.0.0/dist/ag-grid-community.min.js`
-
-- สร้าง/จัดการ Auth User ผ่าน Supabase Dashboard
-- ตั้ง Google Apps Script Web App URL ที่ `ตั้งค่าระบบ → ตั้งค่าอีเมล`
-- ตั้ง Script Properties ใน Google Apps Script:
-  - `SUPABASE_URL`
-  - `SUPABASE_ANON_KEY`
-
-
-## v1.4.0 Update
-
-- ปรับ Dashboard เพื่อลดพื้นที่ส่วนบนและลดข้อมูลซ้ำ
-- ย้ายการ์ด `เดโมในช่วงที่เลือก` และ `ใกล้หมดอายุ 7 วัน` ไปอยู่บรรทัดเดียวกับปุ่ม `สร้างคิวเตือน 3 วัน`
-- เปลี่ยนการ์ดทั้ง 2 ใบเป็น compact KPI card ขนาดเล็ก
-- เปลี่ยน section เดิม `จำนวนตามสถานะ` เป็น KPI ใหม่ชื่อ `อัตราเป็นลูกค้า`
-- `อัตราเป็นลูกค้า` คำนวณจาก:
-  - จำนวนเดโมที่เป็นสถานะ `เป็นลูกค้าแล้ว`
-  - หารด้วยจำนวนเดโมทั้งหมด
-  - แสดงเป็นเปอร์เซ็นต์และจำนวนรายการประกอบ
-- คง section `สรุปตามสถานะ` ไว้สำหรับดูจำนวนแยกตาม status master
-- คง section `จำนวนตามโมดูล` ไว้เหมือนเดิม
-- ไม่มีการเปลี่ยน database schema
-- อัปเดต README คู่กับโค้ดตาม release rule
+- Frontend และ `Code.gs` สามารถ rollback เป็นเวอร์ชันก่อนหน้าได้
+- Functions และ index ใน migration 015–016 สามารถคงอยู่ได้ แต่ frontend v1.5.0 ต้องใช้ migration 016 จึงควรรัน SQL ก่อน deploy frontend
+- การเปลี่ยน column privileges ของ `demo_accounts` ใน migration 016 ถูกออกแบบให้ frontend v1.5.0 โหลด password ผ่าน RPC หาก rollback frontend รุ่นเก่าที่ใช้ `select('*')` จะอ่าน password ไม่ได้
+- ก่อน rollback frontend รุ่นเก่า ให้ประเมิน privilege นี้ก่อน ห้าม grant password กลับโดยไม่ตรวจผลกระทบด้านความปลอดภัย
+- Hard Delete ที่เกิดขึ้นแล้วกู้คืนได้จาก backup เท่านั้น
