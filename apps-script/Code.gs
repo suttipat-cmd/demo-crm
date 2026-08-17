@@ -96,3 +96,56 @@ function safeEqual_(a, b) {
 function json_(payload) {
   return ContentService.createTextOutput(JSON.stringify(payload)).setMimeType(ContentService.MimeType.JSON);
 }
+
+/** Run once in the Apps Script editor to install a daily 09:00 project-timezone trigger. */
+function installDailyReminderTrigger() {
+  ScriptApp.getProjectTriggers().forEach(function(trigger) {
+    if (trigger.getHandlerFunction() === 'sendDueReminders') ScriptApp.deleteTrigger(trigger);
+  });
+  ScriptApp.newTrigger('sendDueReminders').timeBased().atHour(9).everyDays(1).create();
+}
+
+/** Background job. It only sends reminders for rounds that have exactly three days remaining. */
+function sendDueReminders() {
+  var lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    var properties = PropertiesService.getScriptProperties();
+    var serviceRole = properties.getProperty('SUPABASE_SERVICE_ROLE_KEY');
+    if (!serviceRole) throw new Error('Missing service configuration');
+    var queued = supabase_('POST', '/rest/v1/rpc/queue_due_reminder_emails', {}, serviceRole) || [];
+    queued.forEach(function(item) { deliverScheduledEmail_(item.email_log_id, serviceRole); });
+    return { ok: true, queued: queued.length };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function deliverScheduledEmail_(emailLogId, serviceRole) {
+  var log = supabase_('GET', '/rest/v1/email_logs?id=eq.' + encodeURIComponent(emailLogId)
+    + '&select=id,demo_round_id,email_type,to_emails,cc_emails,subject,body,sent_status,sent_at', null, serviceRole)[0];
+  if (!log || log.sent_at || log.sent_status === 'sent') return;
+  if (!Array.isArray(log.to_emails) || !log.to_emails.length || !log.subject || !log.body) {
+    throw new Error('Email log is incomplete');
+  }
+  MailApp.sendEmail({
+    to: log.to_emails.join(','), cc: Array.isArray(log.cc_emails) ? log.cc_emails.join(',') : '',
+    subject: log.subject, body: log.body,
+    name: PropertiesService.getScriptProperties().getProperty('SENDER_NAME') || 'DEMO CRM'
+  });
+  var sentAt = new Date().toISOString();
+  supabase_('PATCH', '/rest/v1/email_logs?id=eq.' + encodeURIComponent(log.id), {
+    sent_status: 'sent', sent_at: sentAt, error_message: null, body: '[redacted after delivery]'
+  }, serviceRole);
+  supabase_('PATCH', '/rest/v1/demo_rounds?id=eq.' + encodeURIComponent(log.demo_round_id), {
+    reminder_email_sent_at: sentAt
+  }, serviceRole);
+}
+
+function testConfiguration() {
+  var properties = PropertiesService.getScriptProperties();
+  if (!properties.getProperty('SUPABASE_URL') || !properties.getProperty('SUPABASE_SERVICE_ROLE_KEY')) {
+    throw new Error('Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY');
+  }
+  return { ok: true, timezone: Session.getScriptTimeZone() };
+}
