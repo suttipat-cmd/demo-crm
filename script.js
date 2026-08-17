@@ -101,7 +101,8 @@
     latestDemoRowsCache: null,
     demoGridColumnState: null,
     demoGridFilterModel: null,
-    modalReturnFocus: null
+    modalReturnFocus: null,
+    confirmResolver: null
   };
 
   const $ = (selector, root = document) => root.querySelector(selector);
@@ -435,6 +436,11 @@
         clearProfileAvatar(target);
         break;
       case 'modal-close':
+        if (State.confirmResolver) { State.confirmResolver(false); State.confirmResolver = null; }
+        closeModal();
+        break;
+      case 'confirm-resolve':
+        if (State.confirmResolver) { State.confirmResolver(target.dataset.value === 'true'); State.confirmResolver = null; }
         closeModal();
         break;
       case 'account-add':
@@ -1913,17 +1919,17 @@
               <tbody>
                 ${pageRows.map((row) => `
                   <tr>
-                    <td><a href="#demos/${row.round.id}"><strong>${escapeHTML(row.company.company_name)}</strong></a></td>
-                    <td>${statusBadge(row.effectiveStatus)}</td>
-                    <td>${showDays ? formatRemaining(row.remainingDays) : escapeHTML(displayName(row.responsible))}</td>
-                    <td class="cell-ellipsis" title="${escapeAttr(row.latestLog?.message || '-')}">${escapeHTML(row.latestLog?.message || '-')}</td>
+                    <td data-label="บริษัท"><a href="#demos/${row.round.id}"><strong>${escapeHTML(row.company.company_name)}</strong></a></td>
+                    <td data-label="สถานะ">${statusBadge(row.effectiveStatus)}</td>
+                    <td data-label="${showDays ? 'วันคงเหลือ' : 'ผู้รับผิดชอบ'}">${showDays ? formatRemaining(row.remainingDays) : escapeHTML(displayName(row.responsible))}</td>
+                    <td data-label="บันทึกล่าสุด" class="cell-ellipsis" title="${escapeAttr(row.latestLog?.message || '-')}">${escapeHTML(row.latestLog?.message || '-')}</td>
                   </tr>
                 `).join('')}
               </tbody>
             </table>
           </div>
           ${renderPagination('dashboard', pageKey, pageInfo.page, pageInfo.totalPages, rows.length)}
-        ` : '<div class="empty">ไม่มีข้อมูล</div>'}
+        ` : `<div class="empty"><strong>ยังไม่มีข้อมูลในส่วนนี้</strong><span>ลองปรับช่วงวันที่ หรือตรวจสอบรายการเดโมอีกครั้ง</span><a class="btn small ghost" href="#demos">ไปยังรายการเดโม</a></div>`}
       </div>
     `;
   }
@@ -3374,7 +3380,7 @@
       return;
     }
 
-    if (!window.confirm(`ปิดรายการเดโมของ ${row.company.company_name} หรือไม่?`)) return;
+    if (!await confirmAction({ title: 'ปิดรายการเดโม?', message: `รายการของ ${row.company.company_name} จะถูกปิดและไม่สามารถกลับมาเป็นเดโมที่ใช้งานได้`, confirmLabel: 'ปิดรายการ', tone: 'warning' })) return;
 
     const { data, error } = await State.sb.rpc('close_demo_round_transaction', {
       p_round_id: roundId,
@@ -3483,7 +3489,7 @@
       return;
     }
 
-    if (!window.confirm('ลบบันทึกนี้หรือไม่?')) return;
+    if (!await confirmAction({ title: 'ลบบันทึก?', message: 'การลบบันทึกนี้ไม่สามารถย้อนกลับได้', confirmLabel: 'ลบบันทึก' })) return;
 
     const { error } = await State.sb.rpc('soft_delete_latest_activity_log', {
       log_id: id
@@ -3509,7 +3515,7 @@
       'ระบบจะลบรอบเดโม บัญชี โมดูล บันทึก อีเมล และการแจ้งเตือนที่เกี่ยวข้อง',
       'การดำเนินการนี้ไม่สามารถย้อนกลับได้'
     ].join('\n');
-    if (!window.confirm(warning)) return;
+    if (!await confirmAction({ title: 'ลบเดโมถาวร?', message: warning, confirmLabel: 'ลบถาวร', tone: 'danger' })) return;
 
     const { data, error } = await State.sb.rpc('hard_delete_demo_round', {
       p_round_id: roundId
@@ -3832,7 +3838,7 @@
       return;
     }
 
-    if (!window.confirm(`ลบผู้รับผิดชอบ "${person.name}" หรือไม่?`)) return;
+    if (!await confirmAction({ title: 'ลบผู้รับผิดชอบ?', message: `ลบ ${person.name} ออกจากระบบหรือไม่?`, confirmLabel: 'ลบผู้รับผิดชอบ' })) return;
 
     const { error } = await State.sb.from('responsible_people').delete().eq('id', id);
     if (error) throw error;
@@ -3893,7 +3899,7 @@ async function saveModule(form) {
       return;
     }
 
-    if (!window.confirm(`ลบโมดูล "${module.name}" หรือไม่?`)) return;
+    if (!await confirmAction({ title: 'ลบโมดูล?', message: `ลบ ${module.name} ออกจากระบบหรือไม่?`, confirmLabel: 'ลบโมดูล' })) return;
 
     const { error } = await State.sb.from('modules').delete().eq('id', id);
     if (error) throw error;
@@ -3955,7 +3961,7 @@ async function saveModule(form) {
       return;
     }
 
-    if (!window.confirm(`ลบสถานะ "${status.name}" หรือไม่?`)) return;
+    if (!await confirmAction({ title: 'ลบสถานะ?', message: `ลบสถานะ ${status.name} ออกจากระบบหรือไม่?`, confirmLabel: 'ลบสถานะ' })) return;
 
     const { error } = await State.sb.from('demo_statuses').delete().eq('id', id);
     if (error) throw error;
@@ -4052,7 +4058,7 @@ async function saveModule(form) {
   }
 
   async function resetBrandLogo() {
-    if (!window.confirm('คืนค่าโลโก้เริ่มต้นหรือไม่?')) return;
+    if (!await confirmAction({ title: 'คืนค่าโลโก้เริ่มต้น?', message: 'โลโก้ที่อัปโหลดไว้จะถูกแทนที่ด้วยโลโก้เริ่มต้น', confirmLabel: 'คืนค่า', tone: 'warning' })) return;
 
     const { error } = await State.sb.from('settings').upsert({
       key: 'brand_logo_data_uri',
@@ -4871,6 +4877,13 @@ async function saveModule(form) {
       const firstFocusable = dialog?.querySelector('button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), a[href]');
       (firstFocusable || dialog)?.focus();
     }, 0);
+  }
+
+  function confirmAction({ title, message, confirmLabel = 'ยืนยัน', tone = 'danger' }) {
+    return new Promise((resolve) => {
+      State.confirmResolver = resolve;
+      showModal(`<header><div><strong>${escapeHTML(title)}</strong><div class="muted small-text">โปรดตรวจสอบก่อนดำเนินการ</div></div><button class="btn small ghost" data-action="modal-close">ปิด</button></header><main><p class="confirm-message">${escapeHTML(message).replace(/\n/g, '<br>')}</p></main><footer><button class="btn ghost" data-action="confirm-resolve" data-value="false">ยกเลิก</button><button class="btn ${tone}" data-action="confirm-resolve" data-value="true">${escapeHTML(confirmLabel)}</button></footer>`);
+    });
   }
 
   function closeModal() {
