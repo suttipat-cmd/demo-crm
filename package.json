@@ -1,7 +1,7 @@
 {
   "name": "demo-crm",
   "private": true,
-  "version": "1.7.0",
+  "version": "1.8.0",
   "scripts": {
     "test": "node tests/static-check.mjs && node tests/shared-utils-check.mjs",
     "check": "node --check script.js && node --check shared-utils.js && node --check vendor-loader.js && npm test"
