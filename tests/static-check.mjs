@@ -29,6 +29,8 @@ const expectations = [
   [html, 'vendor-loader.js', 'HTML must load the optional-vendor loader'],
   [html, 'shared-utils.js', 'HTML must load shared utilities before the app'],
   [sharedUtils, 'DemoCrmUtils', 'Shared utility module must expose its API'],
+  [script, 'dashboard-attention-filter', 'Dashboard work cards must preserve their filter context'],
+  [script, 'getReminderReviewRows', 'Reminder review must explain eligible and excluded rows'],
   [script, 'AbortController', 'Email dispatch must have a cancellation timeout'],
   [script, 'ensureXlsx', 'Excel export must lazy-load XLSX'],
   [script, 'requestAgGrid', 'Demo list must lazy-load AG Grid'],
