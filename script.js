@@ -1,11 +1,7 @@
-/* DEMO CRM v1.5.0
-   Static SPA for GitHub Pages + Supabase.
-   Security rule: never place service_role key, database password, or private token in this file.
-*/
 (() => {
   'use strict';
 
-  const APP_VERSION = '1.7.0';
+  const APP_VERSION = '1.8.0';
   const APP_CONFIG = {
     SUPABASE_URL: 'https://hacmassihdqlgkmwoivs.supabase.co',
     SUPABASE_ANON_KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhhY21hc3NpaGRxbGdrbXdvaXZzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkxMjk1ODgsImV4cCI6MjA5NDcwNTU4OH0.TgkJCHaRndMDZY2SANXCjFLdMkHUd_bxJOb0K9Znpa8',
@@ -72,7 +68,8 @@
       responsible: '',
       module: '',
       sort: 'updated_desc',
-      nearOnly: false
+      nearOnly: false,
+      attention: ''
     },
     dashboardRange: defaultMonthRange(),
     dashboardPages: {
@@ -540,7 +537,12 @@
         });
         break;
       case 'dashboard-status-filter':
-        State.filters.status = target.dataset.statusId || '';
+        State.filters = { search: '', status: target.dataset.statusId || '', responsible: '', module: '', sort: 'updated_desc', nearOnly: false, attention: '' };
+        State.demoPage = 1;
+        location.hash = '#demos';
+        break;
+      case 'dashboard-attention-filter':
+        State.filters = { search: '', status: '', responsible: '', module: '', sort: 'updated_desc', nearOnly: false, attention: target.dataset.attention || '' };
         State.demoPage = 1;
         location.hash = '#demos';
         break;
@@ -556,7 +558,8 @@
           responsible: '',
           module: '',
           sort: 'updated_desc',
-          nearOnly: false
+          nearOnly: false,
+          attention: ''
         };
         State.demoPage = 1;
         render();
@@ -1663,7 +1666,8 @@
       responsible: '',
       module: '',
       sort: 'updated_desc',
-      nearOnly: false
+      nearOnly: false,
+      attention: ''
     };
 
     if (kind === 'near') {
@@ -1798,9 +1802,9 @@
       <section class="card today-work-card content-gap">
         <div class="section-title"><div><h2>งานที่ต้องทำวันนี้</h2><p class="muted">เรียงตามความเร่งด่วนเพื่อให้ทีมเริ่มจากงานสำคัญ</p></div></div>
         <div class="today-work-grid">
-          ${renderTodayWorkCard('ใกล้หมดอายุภายใน 3 วัน', near7.filter((row) => row.remainingDays <= 3), 'warning')}
-          ${renderTodayWorkCard('หมดอายุแต่ยังไม่ปิดรายการ', expired, 'danger')}
-          ${renderTodayWorkCard('เดโมที่กำลังใช้งาน', rows.filter((row) => row.effectiveStatus === STATUS.ACTIVE), 'primary')}
+          ${renderTodayWorkCard('ใกล้หมดอายุภายใน 3 วัน', near7.filter((row) => row.remainingDays <= 3), 'warning', 'near3')}
+          ${renderTodayWorkCard('หมดอายุแต่ยังไม่ปิดรายการ', expired, 'danger', 'expired')}
+          ${renderTodayWorkCard('เดโมที่กำลังใช้งาน', rows.filter((row) => row.effectiveStatus === STATUS.ACTIVE), 'primary', 'active')}
         </div>
       </section>
 
@@ -1814,7 +1818,7 @@
 
       <section class="grid two content-gap">
         <div class="card">
-          <div class="section-title"><h2>อัตราเป็นลูกค้า</h2></div>
+          <div class="section-title"><h2>อัตราเป็นลูกค้า</h2><span class="muted small-text">นับบริษัทไม่ซ้ำจากรอบล่าสุด</span></div>
           ${customerRateCard(customers.length, chartTotal)}
         </div>
         <div class="card">
@@ -1841,8 +1845,8 @@
     `;
   }
 
-  function renderTodayWorkCard(label, rows, tone) {
-    return `<a class="today-work-item ${tone}" href="#demos"><span>${escapeHTML(label)}</span><strong>${rows.length.toLocaleString('th-TH')}</strong><small>เปิดรายการเพื่อดำเนินการ →</small></a>`;
+  function renderTodayWorkCard(label, rows, tone, attention) {
+    return `<button class="today-work-item ${tone}" type="button" data-action="dashboard-attention-filter" data-attention="${escapeAttr(attention)}"><span>${escapeHTML(label)}</span><strong>${rows.length.toLocaleString('th-TH')}</strong><small>เปิดรายการที่กรองแล้ว →</small></button>`;
   }
 
   function customerRateCard(customerCount, totalCount) {
@@ -1856,8 +1860,8 @@
           <span>${percent}%</span>
         </div>
         <div>
-          <strong>${customers.toLocaleString('th-TH')} / ${total.toLocaleString('th-TH')} รายการ</strong>
-          <p class="muted">คิดจากเดโมที่เป็นลูกค้าแล้วเทียบกับเดโมทั้งหมด</p>
+          <strong>${customers.toLocaleString('th-TH')} / ${total.toLocaleString('th-TH')} บริษัท</strong>
+          <p class="muted">บริษัทที่สถานะรอบล่าสุดเป็นลูกค้าแล้ว เทียบกับบริษัททั้งหมด</p>
         </div>
       </div>
     `;
@@ -1937,6 +1941,12 @@
   function renderDemoList() {
     const rows = getFilteredRows();
     const isCalendarView = State.demoView === 'calendar';
+    const attentionLabels = {
+      near3: 'ใกล้หมดอายุภายใน 3 วัน',
+      expired: 'หมดอายุแต่ยังไม่ปิดรายการ',
+      active: 'เดโมที่กำลังใช้งาน'
+    };
+    const attentionLabel = attentionLabels[State.filters.attention] || '';
     if (isCalendarView) {
       State.demoGridRows = [];
     }
@@ -1947,6 +1957,7 @@
         <button class="btn secondary" data-action="report-export">ส่งออก Excel</button>
       `)}
       <section class="card">
+        ${attentionLabel ? `<div class="dashboard-filter-hint" role="status">กำลังแสดงงานจากแดชบอร์ด: <strong>${escapeHTML(attentionLabel)}</strong></div>` : ''}
         <div class="demo-list-toolbar">
           <div>
             <h2>${isCalendarView ? 'ปฏิทินวันหมดอายุ Demo' : 'ตารางรายการเดโม'}</h2>
@@ -3533,10 +3544,31 @@
     );
   }
 
+  function getReminderReviewRows() {
+    const urgentRows = getDemoRows().filter((row) => !row.isFinalStatus && row.remainingDays >= 0 && row.remainingDays <= 3);
+    const dueTodayRows = urgentRows.filter((row) => row.remainingDays === 3);
+    const alreadySentRows = dueTodayRows.filter((row) => Boolean(row.round.reminder_email_sent_at));
+    const missingRecipientRows = dueTodayRows.filter((row) => !row.round.reminder_email_sent_at && !(row.company.contact_emails || []).length);
+    const readyRows = dueTodayRows.filter((row) => !row.round.reminder_email_sent_at && (row.company.contact_emails || []).length);
+    return {
+      urgentRows,
+      dueTodayRows,
+      alreadySentRows,
+      missingRecipientRows,
+      readyRows,
+      lateRows: urgentRows.filter((row) => row.remainingDays < 3)
+    };
+  }
+
   function openReminderReview() {
-    const dueRows = getDemoRows().filter((row) => !row.round.reminder_email_sent_at && !row.isFinalStatus && row.remainingDays === 3);
+    const reminderRows = getReminderReviewRows();
+    const dueRows = reminderRows.readyRows;
     const fixedCc = Array.isArray(State.settings.fixed_cc_emails) ? State.settings.fixed_cc_emails : [];
-    showModal(`<header><div><strong>ตรวจสอบอีเมลเตือนก่อนส่ง</strong><div class="muted small-text">ระบบจะส่งเฉพาะเดโมที่เหลือ 3 วันและยังไม่เคยส่ง</div></div><button class="btn small ghost" data-action="modal-close">ปิด</button></header><main class="grid">${dueRows.length ? `<div class="reminder-review-summary">พร้อมส่ง ${dueRows.length} รายการ · To: อีเมลติดต่อบริษัท · CC: ผู้รับผิดชอบ${fixedCc.length ? ` + Fixed CC ${fixedCc.length}` : ''}</div><div class="reminder-review-list">${dueRows.map((row) => `<a href="#demos/${row.round.id}" data-action="modal-close"><strong>${escapeHTML(row.company.company_name)}</strong><span>${escapeHTML((row.company.contact_emails || []).join(', ') || 'ไม่มีอีเมลผู้ติดต่อ')}</span></a>`).join('')}</div>` : '<div class="empty">วันนี้ไม่มีอีเมลเตือนที่ต้องส่ง</div>'}</main><footer>${dueRows.length ? '<button class="btn ghost" data-action="modal-close">ยกเลิก</button><button class="btn warning" data-action="run-reminder-check">ยืนยันส่งอีเมล</button>' : '<button class="btn primary" data-action="modal-close">ปิด</button>'}</footer>`);
+    const breakdown = `งานใกล้หมดอายุ ≤3 วัน ${reminderRows.urgentRows.length} · ถึงรอบส่งวันนี้ (เหลือ 3 วัน) ${reminderRows.dueTodayRows.length} · ส่งแล้ว ${reminderRows.alreadySentRows.length} · เหลือน้อยกว่า 3 วัน ${reminderRows.lateRows.length} (ไม่ส่งย้อนหลัง)`;
+    const excluded = reminderRows.missingRecipientRows.length
+      ? `<div class="reminder-review-excluded">ไม่ส่ง ${reminderRows.missingRecipientRows.length} รายการ เพราะไม่มีอีเมลผู้ติดต่อ</div>`
+      : '';
+    showModal(`<header><div><strong>ตรวจสอบอีเมลเตือนก่อนส่ง</strong><div class="muted small-text">${breakdown}</div></div><button class="btn small ghost" data-action="modal-close">ปิด</button></header><main class="grid">${dueRows.length ? `<div class="reminder-review-summary">พร้อมส่ง ${dueRows.length} รายการ · To: อีเมลติดต่อบริษัท · CC: ผู้รับผิดชอบ${fixedCc.length ? ` + Fixed CC ${fixedCc.length}` : ''}</div>${excluded}<div class="reminder-review-list">${dueRows.map((row) => `<a href="#demos/${row.round.id}" data-action="modal-close"><strong>${escapeHTML(row.company.company_name)}</strong><span>${escapeHTML((row.company.contact_emails || []).join(', '))}</span></a>`).join('')}</div>` : `<div class="empty"><strong>วันนี้ไม่มีอีเมลเตือนที่พร้อมส่ง</strong><span>${escapeHTML(breakdown)}</span>${excluded}</div>`}</main><footer>${dueRows.length ? '<button class="btn ghost" data-action="modal-close">ยกเลิก</button><button class="btn warning" data-action="run-reminder-check">ยืนยันส่งอีเมล</button>' : '<button class="btn primary" data-action="modal-close">ปิด</button>'}</footer>`);
   }
 
   function openEmailPreview(roundId, type = 'first_demo_email') {
@@ -3738,11 +3770,7 @@
 
   async function queueReminderEmails() {
     const endpoint = getAppsScriptEndpoint();
-    const dueRows = getDemoRows().filter((row) => {
-      return !row.round.reminder_email_sent_at
-        && !row.isFinalStatus
-        && row.remainingDays === 3;
-    });
+    const dueRows = getReminderReviewRows().readyRows;
 
     if (!dueRows.length) {
       toast('ไม่มีรายการที่ต้องส่งอีเมลเตือนวันนี้', 'success');
@@ -4356,6 +4384,9 @@ async function saveModule(form) {
       if (State.filters.responsible && row.round.responsible_person_id !== State.filters.responsible) return false;
       if (State.filters.module && !row.modules.some((module) => module.id === State.filters.module)) return false;
       if (State.filters.nearOnly && !(row.remainingDays >= 0 && row.remainingDays <= 7 && !row.isFinalStatus)) return false;
+      if (State.filters.attention === 'near3' && !(row.remainingDays >= 0 && row.remainingDays <= 3 && !row.isFinalStatus)) return false;
+      if (State.filters.attention === 'expired' && !(row.statusSystemKey === 'expired' || row.effectiveStatus === STATUS.EXPIRED)) return false;
+      if (State.filters.attention === 'active' && row.effectiveStatus !== STATUS.ACTIVE) return false;
       return true;
     });
 
