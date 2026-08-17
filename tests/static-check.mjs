@@ -7,6 +7,7 @@ const requiredFiles = [
   'index.html',
   'style.css',
   'script.js',
+  'shared-utils.js',
   'vendor-loader.js',
   'vendor/supabase-js-2.110.8.min.js',
   'vendor/ag-grid-community-36.0.0.min.js',
@@ -17,14 +18,17 @@ for (const relativePath of requiredFiles) {
   await stat(resolve(root, relativePath));
 }
 
-const [html, script, loader] = await Promise.all([
+const [html, script, loader, sharedUtils] = await Promise.all([
   readFile(resolve(root, 'index.html'), 'utf8'),
   readFile(resolve(root, 'script.js'), 'utf8'),
-  readFile(resolve(root, 'vendor-loader.js'), 'utf8')
+  readFile(resolve(root, 'vendor-loader.js'), 'utf8'),
+  readFile(resolve(root, 'shared-utils.js'), 'utf8')
 ]);
 
 const expectations = [
   [html, 'vendor-loader.js', 'HTML must load the optional-vendor loader'],
+  [html, 'shared-utils.js', 'HTML must load shared utilities before the app'],
+  [sharedUtils, 'DemoCrmUtils', 'Shared utility module must expose its API'],
   [script, 'AbortController', 'Email dispatch must have a cancellation timeout'],
   [script, 'ensureXlsx', 'Excel export must lazy-load XLSX'],
   [script, 'requestAgGrid', 'Demo list must lazy-load AG Grid'],
