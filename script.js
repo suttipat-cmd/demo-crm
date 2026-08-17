@@ -1168,6 +1168,13 @@
           ${renderLoadNotice()}
           ${renderRoute(route)}
         </main>
+        <nav class="mobile-nav" aria-label="เมนูสำหรับมือถือ">
+          ${mobileNavLink('#dashboard', '▦', 'หน้าหลัก', route)}
+          ${mobileNavLink('#demos', '▤', 'เดโม', route)}
+          ${mobileNavLink('#demos/new', '+', 'สร้าง', route)}
+          ${mobileNavLink('#reports', '▧', 'รายงาน', route)}
+          ${isAdmin ? mobileNavLink('#admin', '⚙', 'เพิ่มเติม', route) : ''}
+        </nav>
       </div>
     `;
   }
@@ -1182,6 +1189,11 @@
       '#admin': '⚙'
     };
     return `<a href="${hash}" class="top-nav-link ${active ? 'active' : ''}" title="${escapeAttr(label)}"><span>${escapeHTML(icons[hash] || '')}</span>${escapeHTML(label)}</a>`;
+  }
+
+  function mobileNavLink(hash, icon, label, route) {
+    const active = route === hash || (hash === '#demos' && route.startsWith('#demos/') && route !== '#demos/new');
+    return `<a href="${hash}" class="mobile-nav-link ${active ? 'active' : ''}"><span aria-hidden="true">${icon}</span><small>${escapeHTML(label)}</small></a>`;
   }
 
 
