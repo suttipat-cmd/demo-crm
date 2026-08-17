@@ -4348,3 +4348,15 @@ tbody tr:hover {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* v1.7 task-focused dashboard and review-before-send */
+.today-work-card .section-title p { margin: 4px 0 0; }
+.today-work-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+.today-work-item { display: grid; gap: 6px; padding: 18px; color: var(--text); border: 1px solid var(--line); border-radius: 16px; background: #fff; text-decoration: none; }
+.today-work-item:hover { border-color: var(--primary); box-shadow: var(--shadow-soft); }
+.today-work-item strong { font-size: 30px; line-height: 1; }.today-work-item small { color: var(--muted); }
+.today-work-item.warning { border-left: 4px solid var(--warning); }.today-work-item.danger { border-left: 4px solid var(--danger); }.today-work-item.primary { border-left: 4px solid var(--primary); }
+.reminder-review-summary { padding: 12px; border-radius: 12px; background: var(--warning-weak); color: #7c4300; font-weight: 700; }
+.reminder-review-list { max-height: 320px; overflow: auto; border: 1px solid var(--line); border-radius: 12px; }
+.reminder-review-list a { display: grid; gap: 3px; padding: 12px 14px; color: inherit; text-decoration: none; border-bottom: 1px solid var(--line); }.reminder-review-list a:last-child { border-bottom: 0; }.reminder-review-list span { color: var(--muted); font-size: 13px; }
+@media (max-width: 760px) { .today-work-grid { grid-template-columns: 1fr; }.top-nav-link:nth-child(n+4) { display: none; } }
