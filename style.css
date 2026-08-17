@@ -4369,4 +4369,6 @@ tbody tr:hover {
   .mobile-nav-link { display: grid; min-height: 52px; place-items: center; align-content: center; gap: 2px; border-radius: 12px; color: var(--muted); text-decoration: none; font-weight: 700; }
   .mobile-nav-link span { font-size: 18px; }.mobile-nav-link small { font-size: 11px; }.mobile-nav-link.active { color: var(--primary); background: var(--primary-weak); }
   .compact-table td:last-child { max-width: 180px; white-space: normal; line-height: 1.45; }
+  .compact-table table, .compact-table tbody, .compact-table tr, .compact-table td { display: block; width: 100%; }
+  .compact-table thead { display: none; }.compact-table tbody { padding: 8px; }.compact-table tr { padding: 12px; border: 1px solid var(--line); border-radius: 12px; margin: 8px 0; }.compact-table td { height: auto; padding: 5px 0; border: 0; }.compact-table td::before { content: attr(data-label); display: block; margin-bottom: 2px; color: var(--muted); font-size: 12px; font-weight: 700; }
 }
