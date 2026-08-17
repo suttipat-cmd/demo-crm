@@ -1,4 +1,4 @@
-# DEMO CRM v1.5.0
+# DEMO CRM v1.6.0
 
 เว็บแอปสำหรับทีม Customer Support เพื่อจัดการบริษัท รอบทดลองใช้งาน บัญชีเดโม โมดูล ผู้รับผิดชอบ บันทึกความคืบหน้า การแจ้งเตือน รายงาน และอีเมล
 
@@ -24,6 +24,15 @@
 - ปรับปุ่มเตือน 3 วันให้ส่งอีเมลจริงและรายงานจำนวนสำเร็จ/ล้มเหลว
 - เพิ่ม CSV formula-injection protection
 
+## สิ่งที่แก้ใน v1.6.0
+
+- โหลด AG Grid และ XLSX เฉพาะเมื่อเปิดตารางหรือส่งออกรายงาน ลดขนาดหน้าแรก
+- กำหนด timeout 30 วินาทีสำหรับการเรียก email gateway
+- ตัด RPC hard-delete overload แบบ text และปิดสิทธิ์ execute สำหรับ anon ทุก function
+- บังคับให้ผู้เรียก sync สถานะต้องมี profile ที่ active
+- เพิ่ม static checks และ GitHub Actions CI
+- เตรียม Apps Script gateway และ RPC สำหรับส่งอีเมลเตือน 3 วันแบบอัตโนมัติ โดย CC ผู้รับผิดชอบและ Fixed CC
+
 ## โครงสร้างไฟล์
 
 ```text
@@ -35,8 +44,16 @@ THIRD_PARTY_NOTICES.md
 apps-script/
   Code.gs
 supabase/
-  015_v1_4_8_hard_delete_demo_round.sql
-  016_v1_5_0_reliability_security.sql
+  migrations/
+    20260817184417_security_hardening.sql
+    20260817184418_rls_performance.sql
+    20260817184841_rpc_exposure_hardening.sql
+    20260817184928_revoke_remaining_anon_functions.sql
+    20260817184951_revoke_remaining_public_functions.sql
+    20260817185244_queue_due_reminder_emails.sql
+    20260817185906_harden_scheduled_reminder_delivery.sql
+  functions/
+    send-demo-reminders/
 tests/
   static-check.mjs
 vendor/
@@ -45,6 +62,14 @@ vendor/
   ag-grid-community-36.0.0.min.js
   LICENSE-*.txt
 ```
+
+## ตรวจสอบก่อนส่งขึ้นระบบ
+
+```bash
+npm run check
+```
+
+ไฟล์ migration ชุด v1.6.0 ไม่มีคำสั่งแก้ไขข้อมูลในตารางธุรกิจ แต่มีการปรับสิทธิ์ RPC และ RLS จึงต้องทดสอบ login, สร้าง/แก้ไข/ลบรอบเดโม และแก้ไข activity log ด้วย user และ admin หลัง deploy ทุกครั้ง
 
 ## ข้อกำหนดก่อนอัปเกรด
 
@@ -134,6 +159,14 @@ git push
 ```
 
 หลัง deploy ให้ hard refresh (`Ctrl+F5` หรือ `Cmd+Shift+R`)
+
+### 6. เปิดระบบอีเมลเตือนอัตโนมัติ
+
+1. อัปโหลด `apps-script/Code.gs` ไปยัง Google Apps Script project เดิม แล้ว deploy Web App เวอร์ชันใหม่
+2. ตั้ง Script Properties เพิ่ม `SUPABASE_SERVICE_ROLE_KEY` และ `SCHEDULER_SECRET` (ค่าสุ่มยาวที่เก็บเป็นความลับ)
+3. ตั้งค่า job scheduler ให้เรียก gateway วันละครั้งเวลา 09:00 `Asia/Bangkok` โดยส่งเฉพาะ `{ email_log_id, scheduler_secret }`
+
+ระบบจะเลือกเฉพาะรอบที่เหลือ 3 วัน ยังไม่ถูกส่ง reminder และไม่ได้อยู่ในสถานะสุดท้าย จึงไม่ส่งย้อนหลังหรือส่งซ้ำ โดยผู้รับใน `To` คืออีเมลติดต่อบริษัท และ `CC` คือผู้รับผิดชอบรวมกับ Fixed CC.
 
 ## สิทธิ์การลบ
 

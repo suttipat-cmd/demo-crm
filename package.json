@@ -1,0 +1,9 @@
+{
+  "name": "demo-crm",
+  "private": true,
+  "version": "1.6.0",
+  "scripts": {
+    "test": "node tests/static-check.mjs",
+    "check": "node --check script.js && node --check vendor-loader.js && node tests/static-check.mjs"
+  }
+}

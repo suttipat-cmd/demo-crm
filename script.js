@@ -5,7 +5,7 @@
 (() => {
   'use strict';
 
-  const APP_VERSION = '1.5.0';
+  const APP_VERSION = '1.6.0';
   const APP_CONFIG = {
     SUPABASE_URL: 'https://hacmassihdqlgkmwoivs.supabase.co',
     SUPABASE_ANON_KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhhY21hc3NpaGRxbGdrbXdvaXZzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkxMjk1ODgsImV4cCI6MjA5NDcwNTU4OH0.TgkJCHaRndMDZY2SANXCjFLdMkHUd_bxJOb0K9Znpa8',
@@ -86,6 +86,7 @@
     demoCalendarMonth: currentMonthKey(),
     demoGridRows: [],
     demoGridApi: null,
+    agGridLoadRequested: false,
     reportPage: 1,
     reportSearch: '',
     adminTab: 'users',
@@ -494,14 +495,14 @@
         });
         break;
       case 'report-export':
-        exportDemoRows();
+        await withButtonLoading(target, () => exportDemoRows());
         break;
       case 'company-report-export':
-        exportCompanyReportRows();
+        await withButtonLoading(target, () => exportCompanyReportRows());
         break;
       case 'export-current':
       case 'export-all':
-        exportDemoRows();
+        await withButtonLoading(target, () => exportDemoRows(action === 'export-all'));
         break;
       case 'admin-tab':
         State.adminTab = target.dataset.tab || 'users';
@@ -2061,9 +2062,10 @@
     if (!rows.length) return '<div class="empty">ไม่พบรายการเดโม</div>';
 
     if (!window.agGrid || typeof window.agGrid.createGrid !== 'function') {
+      requestAgGrid();
       return `
         <div class="config-warning">
-          โหลด AG Grid ไม่สำเร็จ ระบบจะแสดงตารางสำรองแทน กรุณาตรวจสอบว่าอัปโหลดโฟลเดอร์ vendor ครบแล้ว
+          กำลังโหลดตารางขั้นสูง... ระบบจะแสดงตารางสำรองชั่วคราว
         </div>
         ${renderLegacyDemoTable(rows)}
       `;
@@ -2078,6 +2080,17 @@
       </div>
       <div id="demo-ag-grid" class="demo-ag-grid" data-ag-grid="demo-list" aria-label="ตารางรายการเดโม"></div>
     `;
+  }
+
+  function requestAgGrid() {
+    if (State.agGridLoadRequested || !window.DemoCrmVendorLoader) return;
+    State.agGridLoadRequested = true;
+    window.DemoCrmVendorLoader.load('ag-grid')
+      .then(() => render())
+      .catch((error) => {
+        console.warn('AG Grid unavailable; using legacy table', error);
+        toast('โหลดตารางขั้นสูงไม่สำเร็จ จึงใช้ตารางสำรอง', 'warning');
+      });
   }
 
   function hydrateDemoGrid() {
@@ -3603,16 +3616,29 @@
   }
 
   async function dispatchEmailLog(emailLogId, endpoint) {
-    const response = await fetch(endpoint, {
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => controller.abort(), 30000);
+    let response;
+    try {
+      response = await fetch(endpoint, {
       method: 'POST',
       mode: 'cors',
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      signal: controller.signal,
       body: JSON.stringify({
         email_log_id: emailLogId,
         access_token: State.session?.access_token || '',
         app_version: APP_VERSION
       })
-    });
+      });
+    } catch (error) {
+      if (error?.name === 'AbortError') {
+        throw new Error('ระบบส่งอีเมลตอบกลับเกิน 30 วินาที กรุณาลองใหม่ภายหลัง');
+      }
+      throw error;
+    } finally {
+      window.clearTimeout(timeoutId);
+    }
     const result = await response.json().catch(() => ({}));
     if (!response.ok || result.ok === false || result.sent !== true) {
       throw new Error(result.error || `Apps Script HTTP ${response.status}`);
@@ -4414,7 +4440,7 @@ async function saveModule(form) {
       .sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0))[0] || null;
   }
 
-  function exportCompanyReportRows() {
+  async function exportCompanyReportRows() {
     const rows = getFilteredCompanyReportRows();
     const data = rows.map((row) => ({
       'ชื่อบริษัท': row.company.company_name,
@@ -4435,6 +4461,7 @@ async function saveModule(form) {
 
     const filename = `demo-crm-company-report-${todayISO()}.xlsx`;
 
+    await ensureXlsx();
     if (window.XLSX) {
       const wb = window.XLSX.utils.book_new();
       const ws = window.XLSX.utils.json_to_sheet(data);
@@ -4447,7 +4474,7 @@ async function saveModule(form) {
   }
 
 
-  function exportDemoRows(forceAll = false) {
+  async function exportDemoRows(forceAll = false) {
     const filtered = hasActiveDemoFilters();
     const rows = forceAll
       ? getDemoRows()
@@ -4478,6 +4505,7 @@ async function saveModule(form) {
 
     const filename = `demo-crm-report-${filtered ? 'filtered' : 'all'}-${todayISO()}.xlsx`;
 
+    await ensureXlsx();
     if (window.XLSX) {
       const wb = window.XLSX.utils.book_new();
       const ws = window.XLSX.utils.json_to_sheet(data);
@@ -4487,6 +4515,19 @@ async function saveModule(form) {
     }
 
     downloadText(filename.replace('.xlsx', '.csv'), toCSV(data), 'text/csv;charset=utf-8');
+  }
+
+  async function ensureXlsx() {
+    if (window.XLSX) return;
+    if (!window.DemoCrmVendorLoader) {
+      throw new Error('ไม่พบตัวโหลดไฟล์ Excel กรุณารีเฟรชหน้าเว็บ');
+    }
+    try {
+      await window.DemoCrmVendorLoader.load('xlsx');
+    } catch (error) {
+      console.warn('XLSX unavailable; falling back to CSV', error);
+      toast('โหลดตัวสร้าง Excel ไม่สำเร็จ จึงส่งออกเป็น CSV แทน', 'warning');
+    }
   }
 
   function hasActiveDemoFilters() {
