@@ -49,6 +49,9 @@ supabase/
     20260817184841_rpc_exposure_hardening.sql
     20260817184928_revoke_remaining_anon_functions.sql
     20260817184951_revoke_remaining_public_functions.sql
+    20260817185244_queue_due_reminder_emails.sql
+  functions/
+    send-demo-reminders/
 tests/
   static-check.mjs
 vendor/
