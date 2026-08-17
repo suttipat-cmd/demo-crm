@@ -5,7 +5,7 @@
 (() => {
   'use strict';
 
-  const APP_VERSION = '1.6.0';
+  const APP_VERSION = '1.7.0';
   const APP_CONFIG = {
     SUPABASE_URL: 'https://hacmassihdqlgkmwoivs.supabase.co',
     SUPABASE_ANON_KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhhY21hc3NpaGRxbGdrbXdvaXZzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkxMjk1ODgsImV4cCI6MjA5NDcwNTU4OH0.TgkJCHaRndMDZY2SANXCjFLdMkHUd_bxJOb0K9Znpa8',
@@ -5047,48 +5047,31 @@ async function saveModule(form) {
   }
 
   function formatRemaining(days) {
-    if (days < 0) return `หมดอายุแล้ว ${Math.abs(days)} วัน`;
-    if (days === 0) return 'หมดอายุวันนี้';
-    return `${days} วัน`;
+    return window.DemoCrmUtils.formatRemaining(days);
   }
 
   function daysBetween(start, end) {
-    if (!start || !end) return 0;
-    const [startYear, startMonth, startDay] = String(start).split('-').map(Number);
-    const [endYear, endMonth, endDay] = String(end).split('-').map(Number);
-    const startUtc = Date.UTC(startYear, startMonth - 1, startDay);
-    const endUtc = Date.UTC(endYear, endMonth - 1, endDay);
-    return Math.round((endUtc - startUtc) / 86400000);
+    return window.DemoCrmUtils.daysBetween(start, end);
   }
 
   function currentMonthKey() {
-    return todayISO().slice(0, 7);
+    return window.DemoCrmUtils.currentMonthKey();
   }
 
   function shiftMonthKey(monthKey, delta) {
-    const [yearText, monthText] = String(monthKey || currentMonthKey()).split('-');
-    const absoluteMonth = Number(yearText) * 12 + Number(monthText) - 1 + Number(delta || 0);
-    const year = Math.floor(absoluteMonth / 12);
-    const month = ((absoluteMonth % 12) + 12) % 12 + 1;
-    return `${year}-${String(month).padStart(2, '0')}`;
+    return window.DemoCrmUtils.shiftMonthKey(monthKey, delta);
   }
 
   function formatCalendarMonth(monthKey) {
-    const [yearText, monthText] = String(monthKey || currentMonthKey()).split('-');
-    const date = new Date(Number(yearText), Number(monthText) - 1, 1);
-    return new Intl.DateTimeFormat('th-TH', { month: 'long', year: 'numeric' }).format(date);
+    return window.DemoCrmUtils.formatCalendarMonth(monthKey);
   }
 
   function todayISO() {
-    const now = new Date();
-    now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
-    return now.toISOString().slice(0, 10);
+    return window.DemoCrmUtils.todayISO();
   }
 
   function addDaysISO(date, days) {
-    const [year, month, day] = String(date).split('-').map(Number);
-    const value = new Date(Date.UTC(year, month - 1, day + Number(days || 0)));
-    return value.toISOString().slice(0, 10);
+    return window.DemoCrmUtils.addDaysISO(date, days);
   }
 
   function defaultMonthRange() {
@@ -5099,75 +5082,48 @@ async function saveModule(form) {
   }
 
   function dateInRange(date, start, end) {
-    if (!date) return false;
-    return (!start || date >= start) && (!end || date <= end);
+    return window.DemoCrmUtils.dateInRange(date, start, end);
   }
 
   function formatDate(value) {
-    const date = parseDateValue(value, false);
-    if (!date) return '-';
-    return formatDateParts(date, false);
+    return window.DemoCrmUtils.formatDate(value);
   }
 
   function formatDateTime(value) {
-    const date = parseDateValue(value, true);
-    if (!date) return '-';
-    return formatDateParts(date, true);
+    return window.DemoCrmUtils.formatDateTime(value);
   }
 
   function parseDateValue(value, includeTime) {
-    if (!value) return null;
-    const text = String(value);
-    let date;
-    if (!includeTime || /^\d{4}-\d{2}-\d{2}$/.test(text)) {
-      date = new Date(`${text.slice(0, 10)}T00:00:00`);
-    } else {
-      date = new Date(text);
-    }
-    return Number.isNaN(date.getTime()) ? null : date;
+    return window.DemoCrmUtils.parseDateValue(value, includeTime);
   }
 
   function formatDateParts(date, includeTime) {
-    const pad = (num) => String(num).padStart(2, '0');
-    const dd = pad(date.getDate());
-    const mm = pad(date.getMonth() + 1);
-    const yyyy = date.getFullYear();
-    if (!includeTime) return `${dd}/${mm}/${yyyy}`;
-    return `${dd}/${mm}/${yyyy} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+    return window.DemoCrmUtils.formatDateParts(date, includeTime);
   }
 
   function normalize(value) {
-    return String(value || '').trim().toLowerCase();
+    return window.DemoCrmUtils.normalize(value);
   }
 
   function isEmail(value) {
-    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || '').trim());
+    return window.DemoCrmUtils.isEmail(value);
   }
 
   function unique(values) {
-    return [...new Set(values.map((value) => String(value || '').trim()).filter(Boolean))];
+    return window.DemoCrmUtils.unique(values);
   }
 
 
   function escapeCSSIdent(value) {
-    if (window.CSS && typeof window.CSS.escape === 'function') {
-      return window.CSS.escape(value);
-    }
-    return String(value).replace(/"/g, '\\"');
+    return window.DemoCrmUtils.escapeCSSIdent(value);
   }
 
   function escapeHTML(value) {
-    return String(value ?? '').replace(/[&<>"']/g, (char) => ({
-      '&': '&amp;',
-      '<': '&lt;',
-      '>': '&gt;',
-      '"': '&quot;',
-      "'": '&#039;'
-    })[char]);
+    return window.DemoCrmUtils.escapeHTML(value);
   }
 
   function escapeAttr(value) {
-    return escapeHTML(value).replace(/`/g, '&#096;');
+    return window.DemoCrmUtils.escapeAttr(value);
   }
 
   function withTimeout(promise, timeoutMs, message) {
@@ -5262,8 +5218,6 @@ async function saveModule(form) {
   }
 
   function safeError(error) {
-    if (!error) return 'Unknown error';
-    if (typeof error === 'string') return error;
-    return error.message || error.error_description || JSON.stringify(error);
+    return window.DemoCrmUtils.safeError(error);
   }
 })();
