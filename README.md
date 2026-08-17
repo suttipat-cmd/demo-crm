@@ -163,8 +163,8 @@ git push
 ### 6. เปิดระบบอีเมลเตือนอัตโนมัติ
 
 1. อัปโหลด `apps-script/Code.gs` ไปยัง Google Apps Script project เดิม แล้ว deploy Web App เวอร์ชันใหม่
-2. ตั้ง Script Properties เพิ่ม `SUPABASE_SERVICE_ROLE_KEY` และ `SCHEDULER_SECRET` (ค่าสุ่มยาวที่เก็บเป็นความลับ)
-3. ตั้งค่า job scheduler ให้เรียก gateway วันละครั้งเวลา 09:00 `Asia/Bangkok` โดยส่งเฉพาะ `{ email_log_id, scheduler_secret }`
+2. ตั้ง Script Properties เพิ่ม `SUPABASE_SERVICE_ROLE_KEY` (เก็บใน Script Properties เท่านั้น ห้ามใส่ frontend)
+3. ตั้ง project timezone เป็น `Asia/Bangkok` แล้วรัน `installDailyReminderTrigger()` หนึ่งครั้งเพื่อสร้าง job รายวันช่วง 09:00
 
 ระบบจะเลือกเฉพาะรอบที่เหลือ 3 วัน ยังไม่ถูกส่ง reminder และไม่ได้อยู่ในสถานะสุดท้าย จึงไม่ส่งย้อนหลังหรือส่งซ้ำ โดยผู้รับใน `To` คืออีเมลติดต่อบริษัท และ `CC` คือผู้รับผิดชอบรวมกับ Fixed CC.
 
