@@ -560,6 +560,9 @@
           await resetTemplate(target.dataset.key);
         });
         break;
+      case 'reminder-review':
+        openReminderReview();
+        break;
       case 'run-reminder-check':
         await withButtonLoading(target, async () => {
           await queueReminderEmails();
@@ -1766,11 +1769,20 @@
             <input class="input" type="date" data-dashboard-range="end" value="${escapeAttr(end)}">
           </div>
           <div class="dashboard-quick-row">
-            ${userIsAdmin() ? '<button class="btn warning" data-action="run-reminder-check">ส่งอีเมลเตือน 3 วัน</button>' : ''}
+            ${userIsAdmin() ? '<button class="btn warning" data-action="reminder-review">ตรวจสอบอีเมลเตือน</button>' : ''}
             <button class="btn ghost" type="button" data-action="dashboard-range-reset">ล้างช่วงวันที่</button>
             ${compactStatCard('เดโมในช่วงที่เลือก', rows.length)}
             ${compactStatCard('ใกล้หมดอายุ 7 วัน', near7.length)}
           </div>
+        </div>
+      </section>
+
+      <section class="card today-work-card content-gap">
+        <div class="section-title"><div><h2>งานที่ต้องทำวันนี้</h2><p class="muted">เรียงตามความเร่งด่วนเพื่อให้ทีมเริ่มจากงานสำคัญ</p></div></div>
+        <div class="today-work-grid">
+          ${renderTodayWorkCard('ใกล้หมดอายุภายใน 3 วัน', near7.filter((row) => row.remainingDays <= 3), 'warning')}
+          ${renderTodayWorkCard('หมดอายุแต่ยังไม่ปิดรายการ', expired, 'danger')}
+          ${renderTodayWorkCard('เดโมที่กำลังใช้งาน', rows.filter((row) => row.effectiveStatus === STATUS.ACTIVE), 'primary')}
         </div>
       </section>
 
@@ -1809,6 +1821,10 @@
         <strong>${Number(value || 0).toLocaleString('th-TH')}</strong>
       </div>
     `;
+  }
+
+  function renderTodayWorkCard(label, rows, tone) {
+    return `<a class="today-work-item ${tone}" href="#demos"><span>${escapeHTML(label)}</span><strong>${rows.length.toLocaleString('th-TH')}</strong><small>เปิดรายการเพื่อดำเนินการ →</small></a>`;
   }
 
   function customerRateCard(customerCount, totalCount) {
@@ -3497,6 +3513,12 @@
         : 'ลบเดโมและข้อมูลที่เกี่ยวข้องแล้ว',
       'success'
     );
+  }
+
+  function openReminderReview() {
+    const dueRows = getDemoRows().filter((row) => !row.round.reminder_email_sent_at && !row.isFinalStatus && row.remainingDays === 3);
+    const fixedCc = Array.isArray(State.settings.fixed_cc_emails) ? State.settings.fixed_cc_emails : [];
+    showModal(`<header><div><strong>ตรวจสอบอีเมลเตือนก่อนส่ง</strong><div class="muted small-text">ระบบจะส่งเฉพาะเดโมที่เหลือ 3 วันและยังไม่เคยส่ง</div></div><button class="btn small ghost" data-action="modal-close">ปิด</button></header><main class="grid">${dueRows.length ? `<div class="reminder-review-summary">พร้อมส่ง ${dueRows.length} รายการ · To: อีเมลติดต่อบริษัท · CC: ผู้รับผิดชอบ${fixedCc.length ? ` + Fixed CC ${fixedCc.length}` : ''}</div><div class="reminder-review-list">${dueRows.map((row) => `<a href="#demos/${row.round.id}" data-action="modal-close"><strong>${escapeHTML(row.company.company_name)}</strong><span>${escapeHTML((row.company.contact_emails || []).join(', ') || 'ไม่มีอีเมลผู้ติดต่อ')}</span></a>`).join('')}</div>` : '<div class="empty">วันนี้ไม่มีอีเมลเตือนที่ต้องส่ง</div>'}</main><footer>${dueRows.length ? '<button class="btn ghost" data-action="modal-close">ยกเลิก</button><button class="btn warning" data-action="run-reminder-check">ยืนยันส่งอีเมล</button>' : '<button class="btn primary" data-action="modal-close">ปิด</button>'}</footer>`);
   }
 
   function openEmailPreview(roundId, type = 'first_demo_email') {
