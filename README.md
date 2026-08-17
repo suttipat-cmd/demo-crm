@@ -1,4 +1,4 @@
-# DEMO CRM v1.5.0
+# DEMO CRM v1.6.0
 
 เว็บแอปสำหรับทีม Customer Support เพื่อจัดการบริษัท รอบทดลองใช้งาน บัญชีเดโม โมดูล ผู้รับผิดชอบ บันทึกความคืบหน้า การแจ้งเตือน รายงาน และอีเมล
 
@@ -24,6 +24,14 @@
 - ปรับปุ่มเตือน 3 วันให้ส่งอีเมลจริงและรายงานจำนวนสำเร็จ/ล้มเหลว
 - เพิ่ม CSV formula-injection protection
 
+## สิ่งที่แก้ใน v1.6.0
+
+- โหลด AG Grid และ XLSX เฉพาะเมื่อเปิดตารางหรือส่งออกรายงาน ลดขนาดหน้าแรก
+- กำหนด timeout 30 วินาทีสำหรับการเรียก email gateway
+- ตัด RPC hard-delete overload แบบ text และปิดสิทธิ์ execute สำหรับ anon ทุก function
+- บังคับให้ผู้เรียก sync สถานะต้องมี profile ที่ active
+- เพิ่ม static checks และ GitHub Actions CI
+
 ## โครงสร้างไฟล์
 
 ```text
@@ -35,8 +43,12 @@ THIRD_PARTY_NOTICES.md
 apps-script/
   Code.gs
 supabase/
-  015_v1_4_8_hard_delete_demo_round.sql
-  016_v1_5_0_reliability_security.sql
+  migrations/
+    20260817184417_security_hardening.sql
+    20260817184418_rls_performance.sql
+    20260817184841_rpc_exposure_hardening.sql
+    20260817184928_revoke_remaining_anon_functions.sql
+    20260817184951_revoke_remaining_public_functions.sql
 tests/
   static-check.mjs
 vendor/
@@ -45,6 +57,14 @@ vendor/
   ag-grid-community-36.0.0.min.js
   LICENSE-*.txt
 ```
+
+## ตรวจสอบก่อนส่งขึ้นระบบ
+
+```bash
+npm run check
+```
+
+ไฟล์ migration ชุด v1.6.0 ไม่มีคำสั่งแก้ไขข้อมูลในตารางธุรกิจ แต่มีการปรับสิทธิ์ RPC และ RLS จึงต้องทดสอบ login, สร้าง/แก้ไข/ลบรอบเดโม และแก้ไข activity log ด้วย user และ admin หลัง deploy ทุกครั้ง
 
 ## ข้อกำหนดก่อนอัปเกรด
 
