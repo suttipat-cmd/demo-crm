@@ -1,4 +1,4 @@
-# DEMO CRM v1.6.0
+# DEMO CRM v1.9.0
 
 เว็บแอปสำหรับทีม Customer Support เพื่อจัดการบริษัท รอบทดลองใช้งาน บัญชีเดโม โมดูล ผู้รับผิดชอบ บันทึกความคืบหน้า การแจ้งเตือน รายงาน และอีเมล
 
@@ -33,6 +33,13 @@
 - เพิ่ม static checks และ GitHub Actions CI
 - เตรียม Apps Script gateway และ RPC สำหรับส่งอีเมลเตือน 3 วันแบบอัตโนมัติ โดย CC ผู้รับผิดชอบและ Fixed CC
 
+## สิ่งที่แก้ใน v1.9.0
+
+- ย้ายการเขียนสถานะตามวันออกจากทุกการเปิดหน้าเว็บ ไปเป็นงาน trusted scheduler
+- ปิดสิทธิ์ RPC สำหรับ trigger/RLS helper, แก้ RLS policy ซ้ำ และเพิ่ม index สำหรับ foreign key
+- เพิ่ม audit trail ทุกครั้งที่เปิดดูบัญชีเดโมที่มีรหัสผ่าน
+- แก้ Edge Function ให้ส่ง `email_log_id` ถูกต้อง และเพิ่ม regression check กับ lockfile
+
 ## โครงสร้างไฟล์
 
 ```text
@@ -52,6 +59,8 @@ supabase/
     20260817184951_revoke_remaining_public_functions.sql
     20260817185244_queue_due_reminder_emails.sql
     20260817185906_harden_scheduled_reminder_delivery.sql
+    20260822103000_security_performance_reliability.sql
+    20260822104000_restore_rls_helper_execute.sql
   functions/
     send-demo-reminders/
 tests/
@@ -69,13 +78,13 @@ vendor/
 npm run check
 ```
 
-ไฟล์ migration ชุด v1.6.0 ไม่มีคำสั่งแก้ไขข้อมูลในตารางธุรกิจ แต่มีการปรับสิทธิ์ RPC และ RLS จึงต้องทดสอบ login, สร้าง/แก้ไข/ลบรอบเดโม และแก้ไข activity log ด้วย user และ admin หลัง deploy ทุกครั้ง
+Migration v1.9.0 ไม่แก้ไขหรือลบข้อมูลธุรกิจเดิม แต่ปรับสิทธิ์ RPC/RLS และสร้าง audit log สำหรับการเปิดดูรหัสบัญชีเดโม จึงต้องทดสอบ login, สร้าง/แก้ไข/ลบรอบเดโม, จัดการ master data และแก้ไข activity log ด้วย user และ admin หลัง deploy ทุกครั้ง
 
 ## ข้อกำหนดก่อนอัปเกรด
 
 เวอร์ชันนี้เป็นแพ็กอัปเกรดสำหรับฐานข้อมูลเดิมของ DEMO CRM ซึ่งต้องมี schema และ migrations ถึง v1.4.4 แล้ว ได้แก่ตาราง/ฟังก์ชันที่ frontend เดิมใช้งาน เช่น `profiles`, `companies`, `demo_rounds`, `demo_accounts`, `demo_round_modules`, `modules`, `responsible_people`, `demo_statuses`, `activity_logs`, `email_logs`, `email_templates`, `notification_states`, `settings`, `is_admin()`, `update_latest_activity_log_message()` และ `soft_delete_latest_activity_log()`
 
-หากเป็นการติดตั้งฐานข้อมูลใหม่ตั้งแต่ศูนย์ แพ็กไฟล์ที่ได้รับจากผู้ใช้ไม่มี base schema และ migrations 001–014 จึงต้องนำ schema เดิมมารันก่อน ไฟล์ 015–016 ไม่ใช่ full schema สำหรับฐานข้อมูลเปล่า
+หากเป็นการติดตั้งฐานข้อมูลใหม่ตั้งแต่ศูนย์ ต้องนำ base schema ของระบบเดิมมารันก่อน เพราะโฟลเดอร์นี้เป็น incremental migrations ไม่ใช่ full schema
 
 ## ขั้นตอนติดตั้ง
 
@@ -85,11 +94,13 @@ npm run check
 
 ### 2. รัน SQL ตามลำดับ
 
-เปิด Supabase SQL Editor ด้วย role เจ้าของฐานข้อมูล แล้วรัน:
+production ปัจจุบันรัน migrations ใน `supabase/migrations/` ครบแล้ว สำหรับ environment ใหม่ให้รันตามลำดับเวลา หลัง base schema:
 
 ```text
-supabase/015_v1_4_8_hard_delete_demo_round.sql
-supabase/016_v1_5_0_reliability_security.sql
+supabase/migrations/20260817184417_security_hardening.sql
+...
+supabase/migrations/20260822103000_security_performance_reliability.sql
+supabase/migrations/20260822104000_restore_rls_helper_execute.sql
 ```
 
 ห้ามปิด RLS เพื่อแก้ปัญหาสิทธิ์
@@ -115,7 +126,7 @@ where schemaname = 'public'
   and indexname = 'email_logs_idempotency_key_uidx';
 ```
 
-ควรพบ 4 functions และ 1 unique index
+ควรพบ functions ที่ frontend เรียก, `sensitive_account_access_logs` และ index ของ foreign keys ที่ migration สร้าง
 
 ### 3. ตั้งค่า Frontend
 
@@ -137,7 +148,8 @@ const APP_CONFIG = {
 2. แทนที่ `Code.gs` ด้วยไฟล์ `apps-script/Code.gs`
 3. ตั้ง Script Properties:
    - `SUPABASE_URL`
-   - `SUPABASE_ANON_KEY`
+   - `SUPABASE_SERVICE_ROLE_KEY` (เก็บเฉพาะ Script Properties)
+   - `SCHEDULER_SECRET` (random secret สำหรับการเรียกจาก Edge Function ถ้าใช้งาน)
    - `SENDER_NAME` (ไม่บังคับ)
 4. รัน `testConfiguration()` หนึ่งครั้งเพื่ออนุญาตสิทธิ์
 5. Deploy เป็น Web app:
@@ -154,7 +166,7 @@ Frontend ยอมรับเฉพาะ URL รูปแบบ `https://scrip
 
 ```bash
 git add .
-git commit -m "Release DEMO CRM v1.5.0"
+git commit -m "Release DEMO CRM v1.9.0"
 git push
 ```
 
@@ -165,6 +177,9 @@ git push
 1. อัปโหลด `apps-script/Code.gs` ไปยัง Google Apps Script project เดิม แล้ว deploy Web App เวอร์ชันใหม่
 2. ตั้ง Script Properties เพิ่ม `SUPABASE_SERVICE_ROLE_KEY` (เก็บใน Script Properties เท่านั้น ห้ามใส่ frontend)
 3. ตั้ง project timezone เป็น `Asia/Bangkok` แล้วรัน `installDailyReminderTrigger()` หนึ่งครั้งเพื่อสร้าง job รายวันช่วง 09:00
+4. ตรวจ Script Properties ให้มี `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` และ (ถ้าใช้ Edge Function) `SCHEDULER_SECRET`
+
+ทางเลือกสำหรับ external scheduler: deploy `send-demo-reminders` แล้วตั้ง secrets `REMINDER_CRON_SECRET` และ `APPS_SCRIPT_SCHEDULER_SECRET` ให้ตรงกับ `SCHEDULER_SECRET` ใน Apps Script จากนั้นเรียก function พร้อม header `x-reminder-cron-secret` เท่านั้น. Function ใช้ custom secret จึงตั้ง `verify_jwt=false` โดยเจตนา
 
 ระบบจะเลือกเฉพาะรอบที่เหลือ 3 วัน ยังไม่ถูกส่ง reminder และไม่ได้อยู่ในสถานะสุดท้าย จึงไม่ส่งย้อนหลังหรือส่งซ้ำ โดยผู้รับใน `To` คืออีเมลติดต่อบริษัท และ `CC` คือผู้รับผิดชอบรวมกับ Fixed CC.
 
@@ -180,10 +195,10 @@ git push
 
 ## ความปลอดภัยที่ควรทราบ
 
-- รหัสผ่านบัญชีเดโมยังจำเป็นต้องเก็บในฐานข้อมูลเพื่อแสดงและประกอบอีเมล แต่ v1.5.0 ลดการกระจายข้อมูลด้วย RPC แบบโหลดเฉพาะรอบ ไม่โหลดทั้งตาราง
+- รหัสผ่านบัญชีเดโมยังจำเป็นต้องเก็บในฐานข้อมูลเพื่อแสดงและประกอบอีเมล จึงอนุญาตให้ active internal user ทุกคนเปิดดูตามนโยบายทีม และบันทึก audit trail ทุกครั้ง
 - ใช้เฉพาะ credential สำหรับระบบทดลอง ห้ามนำรหัสผ่าน production หรือรหัสผ่านที่ใช้ซ้ำกับระบบอื่นมาเก็บ
-- `Code.gs` ตรวจ Supabase access token และอ่าน/อัปเดต `email_logs` ด้วยสิทธิ์ของผู้ใช้ ไม่ใช้ service role
-- Email body ถูก redact หลัง Apps Script ประมวลผล หากกด retry frontend จะสร้าง payload เดิมกลับในแถว idempotency เดิม
+- `Code.gs` ใช้ service-role เฉพาะฝั่ง Apps Script; ห้ามนำ key นี้ใส่ frontend หรือ repository
+- Email body ถูก redact หลังส่งสำเร็จ; กรณีส่งไม่สำเร็จระบบเก็บ payload ไว้เพื่อ retry แบบ idempotent
 - Static-hosting CSP แบบ `<meta>` ไม่สามารถบังคับ `frame-ancestors`; production hosting ควรส่ง HTTP headers `Content-Security-Policy`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer` และ `Permissions-Policy` เพิ่ม
 - ตรวจ Supabase Auth redirect URLs, password policy, session lifetime และ RLS policies ใน staging ก่อน production
 
@@ -211,7 +226,7 @@ node tests/static-check.mjs
 ## Rollback
 
 - Frontend และ `Code.gs` สามารถ rollback เป็นเวอร์ชันก่อนหน้าได้
-- Functions และ index ใน migration 015–016 สามารถคงอยู่ได้ แต่ frontend v1.5.0 ต้องใช้ migration 016 จึงควรรัน SQL ก่อน deploy frontend
-- การเปลี่ยน column privileges ของ `demo_accounts` ใน migration 016 ถูกออกแบบให้ frontend v1.5.0 โหลด password ผ่าน RPC หาก rollback frontend รุ่นเก่าที่ใช้ `select('*')` จะอ่าน password ไม่ได้
+- Functions และ index ใน migration สามารถคงอยู่ได้ แต่ frontend v1.9.0 ต้องใช้ migration ล่าสุด จึงควรรัน SQL ก่อน deploy frontend
+- หาก rollback frontend รุ่นเก่าที่เรียก `sync_demo_statuses` จาก browser ต้อง rollback สิทธิ์ RPC นี้ด้วย; ห้ามเปิดสิทธิ์ helper function เพื่อแก้ปัญหาชั่วคราว
 - ก่อน rollback frontend รุ่นเก่า ให้ประเมิน privilege นี้ก่อน ห้าม grant password กลับโดยไม่ตรวจผลกระทบด้านความปลอดภัย
 - Hard Delete ที่เกิดขึ้นแล้วกู้คืนได้จาก backup เท่านั้น
