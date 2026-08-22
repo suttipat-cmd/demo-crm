@@ -1,5 +1,5 @@
 /**
- * DEMO CRM email gateway (v1.6.0)
+ * DEMO CRM email gateway (v1.9.0)
  *
  * Script properties:
  * - SUPABASE_URL               e.g. https://<project-ref>.supabase.co
@@ -113,6 +113,8 @@ function sendDueReminders() {
     var properties = PropertiesService.getScriptProperties();
     var serviceRole = properties.getProperty('SUPABASE_SERVICE_ROLE_KEY');
     if (!serviceRole) throw new Error('Missing service configuration');
+    // Status writes run only in this trusted daily job, never on every browser load.
+    supabase_('POST', '/rest/v1/rpc/sync_demo_statuses', {}, serviceRole);
     var queued = supabase_('POST', '/rest/v1/rpc/queue_due_reminder_emails', {}, serviceRole) || [];
     queued.forEach(function(item) { deliverScheduledEmail_(item.email_log_id, serviceRole); });
     return { ok: true, queued: queued.length };
