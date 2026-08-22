@@ -1,7 +1,11 @@
+/* DEMO CRM v1.9.0
+   Static SPA for GitHub Pages + Supabase.
+   Security rule: never place service_role key, database password, or private token in this file.
+*/
 (() => {
   'use strict';
 
-  const APP_VERSION = '1.8.0';
+  const APP_VERSION = '1.9.0';
   const APP_CONFIG = {
     SUPABASE_URL: 'https://hacmassihdqlgkmwoivs.supabase.co',
     SUPABASE_ANON_KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhhY21hc3NpaGRxbGdrbXdvaXZzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkxMjk1ODgsImV4cCI6MjA5NDcwNTU4OH0.TgkJCHaRndMDZY2SANXCjFLdMkHUd_bxJOb0K9Znpa8',
@@ -864,16 +868,6 @@
     if (showToast) render();
 
     try {
-      await withTimeout(
-        State.sb.rpc('sync_demo_statuses'),
-        6000,
-        'อัปเดตสถานะนานเกินไป'
-      ).catch((error) => {
-        console.warn('sync_demo_statuses skipped:', safeError(error));
-      });
-
-      if (seq !== State.loadSeq) return;
-
       const responses = await withTimeout(
         Promise.all([
           fetchAllPages((from, to) => State.sb.from('profiles').select('*').order('full_name').range(from, to), 'profiles'),
@@ -5210,7 +5204,7 @@ async function saveModule(form) {
       || /could not find.*function/i.test(message)
       || /schema cache/i.test(message)
     ) {
-      return new Error('ยังไม่ได้ติดตั้ง SQL v1.4.8 กรุณารันไฟล์ 015_v1_4_8_hard_delete_demo_round.sql แล้วลองใหม่');
+      return new Error('ฟังก์ชันฐานข้อมูลยังไม่พร้อม กรุณารัน migrations ล่าสุดแล้วลองใหม่');
     }
 
     if (/foreign key|violates.*constraint/i.test(message)) {
@@ -5227,7 +5221,7 @@ async function saveModule(form) {
       || /schema cache/i.test(message)
       || (functionName && message.includes(functionName))
     ) {
-      return new Error('ฟังก์ชันฐานข้อมูลยังไม่พร้อม กรุณารัน SQL 016_v1_5_0_reliability_security.sql แล้วรีเฟรชหน้าเว็บ');
+      return new Error('ฟังก์ชันฐานข้อมูลยังไม่พร้อม กรุณารัน migrations ล่าสุดแล้วรีเฟรชหน้าเว็บ');
     }
     return error instanceof Error ? error : new Error(message);
   }
