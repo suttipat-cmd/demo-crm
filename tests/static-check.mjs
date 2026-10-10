@@ -34,6 +34,8 @@ const expectations = [
   [script, 'AbortController', 'Email dispatch must have a cancellation timeout'],
   [script, 'ensureXlsx', 'Excel export must lazy-load XLSX'],
   [script, 'requestAgGrid', 'Demo list must lazy-load AG Grid'],
+  [script, 'renewalStatus?.id || form.status_id.value', 'Renewal saves must always use the pending status'],
+  [script, 'older draft cannot re-submit the status', 'Renewal drafts must not restore the source-round status'],
   [loader, 'ag-grid-community-36.0.0.min.js', 'Vendor loader must reference AG Grid'],
   [loader, 'xlsx-0.18.5.min.js', 'Vendor loader must reference XLSX']
 ];
