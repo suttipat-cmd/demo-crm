@@ -291,6 +291,11 @@ textarea {
   gap: 7px;
 }
 
+.field-hint {
+  color: #64748b;
+  font-size: 12px;
+}
+
 .field label {
   color: #344054;
   font-size: 13px;

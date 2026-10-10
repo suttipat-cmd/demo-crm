@@ -5,7 +5,7 @@
 (() => {
   'use strict';
 
-  const APP_VERSION = '1.9.0';
+  const APP_VERSION = '1.9.1';
   const APP_CONFIG = {
     SUPABASE_URL: 'https://hacmassihdqlgkmwoivs.supabase.co',
     SUPABASE_ANON_KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhhY21hc3NpaGRxbGdrbXdvaXZzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkxMjk1ODgsImV4cCI6MjA5NDcwNTU4OH0.TgkJCHaRndMDZY2SANXCjFLdMkHUd_bxJOb0K9Znpa8',
@@ -2571,13 +2571,14 @@
     const renewalNo = editRow ? (round.renewal_no || 0) : renewRow ? (round.renewal_no || 0) + 1 : 0;
     const draftKey = demoDraftKey(editId, renewFromId);
     const draft = readDemoDraft(draftKey);
+    const renewalStatus = renewRow ? getSystemStatusMeta('pending') : null;
 
     const baseValues = {
       company_name: company.company_name || '',
       contact_name: company.contact_name || '',
       contact_emails: company.contact_emails || [],
-      status_id: getRoundStatusId(round),
-      status: getRoundStatusName(round),
+      status_id: renewalStatus?.id || getRoundStatusId(round),
+      status: renewalStatus?.name || getRoundStatusName(round),
       responsible_person_id: getRoundResponsiblePersonId(round),
       start_date: startDate,
       end_date: endDate,
@@ -2599,6 +2600,13 @@
         : baseValues.accounts
     };
 
+    // A renewal is always created as pending. Do this after applying a draft so
+    // an older draft cannot re-submit the status of the source round.
+    if (renewRow && renewalStatus) {
+      values.status_id = renewalStatus.id;
+      values.status = renewalStatus.name;
+    }
+
     const selectedModuleIds = values.modules || [];
     const accounts = values.accounts || [{ login_email: '', password: '', note: '' }];
     const responsibleOptions = State.responsiblePeople.filter((person) => person.is_active || person.id === values.responsible_person_id);
@@ -2615,6 +2623,9 @@
       ` : ''}
       ${!responsibleOptions.length ? `
         <div class="config-warning">ยังไม่มี master ผู้รับผิดชอบ กรุณาเพิ่มในหน้า ตั้งค่าระบบ → ผู้รับผิดชอบ ก่อนสร้างเดโม</div>
+      ` : ''}
+      ${renewRow && !renewalStatus ? `
+        <div class="config-warning">ยังไม่ได้ตั้งค่าสถานะ “รอดำเนินการ” ใน Status Master จึงไม่สามารถสร้างรอบต่ออายุได้</div>
       ` : ''}
       <form data-action="demo-save" data-draft-key="${escapeAttr(draftKey)}" data-edit-id="${escapeAttr(editId || '')}" data-renew-from-id="${escapeAttr(renewFromId || '')}" class="grid demo-form">
         <section class="panel form-section">
@@ -2643,9 +2654,10 @@
           <div class="grid four">
             <div class="field">
               <label>สถานะ <span class="required">*</span></label>
-              <select class="select" name="status_id" data-final-status-date required>
+              <select class="select" name="status_id" data-final-status-date ${renewRow ? 'disabled' : ''} required>
                 ${getSelectableStatuses(values.status_id).map((status) => option(status.id, status.name, values.status_id)).join('')}
               </select>
+              ${renewRow ? '<small class="field-hint">รอบต่ออายุจะเริ่มด้วยสถานะรอดำเนินการ</small>' : ''}
             </div>
             <div class="field">
               <label>ผู้รับผิดชอบ <span class="required">*</span></label>
@@ -3277,7 +3289,11 @@
 
     validateDemoForm(form, contactEmails, selectedModules, accounts);
 
-    const statusId = form.status_id.value;
+    const renewalStatus = renewFromId ? getSystemStatusMeta('pending') : null;
+    if (renewFromId && !renewalStatus) {
+      throw new Error('ยังไม่ได้ตั้งค่าสถานะ “รอดำเนินการ” ใน Status Master');
+    }
+    const statusId = renewalStatus?.id || form.status_id.value;
     const statusMeta = getStatusMetaById(statusId);
     if (!statusMeta) throw new Error('กรุณาเลือกสถานะที่ถูกต้อง');
     const sourceRow = editId
@@ -5234,6 +5250,7 @@ async function saveModule(form) {
       [/DEMO_ROUND_CONFLICT/i, 'รายการนี้ถูกแก้ไขจากผู้ใช้อื่นแล้ว กรุณารีเฟรชและตรวจข้อมูลล่าสุดก่อนบันทึกอีกครั้ง'],
       [/DEMO_ROUND_NOT_FOUND_OR_FORBIDDEN|DEMO_ROUND_UPDATE_FORBIDDEN|RENEW_SOURCE_UPDATE_FORBIDDEN/i, 'ไม่พบรายการหรือไม่มีสิทธิ์แก้ไข กรุณารีเฟรชข้อมูล'],
       [/INVALID_DEMO_DATE_RANGE/i, 'วันที่สิ้นสุดต้องไม่ก่อนวันที่เริ่ม'],
+      [/INVALID_STATUS/i, 'สถานะที่เลือกไม่สามารถใช้กับรายการนี้ กรุณารีเฟรชหน้าเว็บแล้วลองใหม่'],
       [/CLOSED_STATUS_NOT_CONFIGURED/i, 'ยังไม่ได้ตั้งค่าสถานะปิดรายการใน Status Master'],
       [/ACTIVE_PROFILE_REQUIRED/i, 'โปรไฟล์ผู้ใช้งานถูกปิดหรือไม่พร้อมใช้งาน']
     ];
